@@ -1,12 +1,14 @@
-"""Naive baseline: POST a task straight to the backlog. No validation, no
-idempotency, no chokepoint — this is the deliberately naive control group."""
+"""POST a task to the backlog. Only ever invoked by the chokepoint."""
 
 import httpx
 
 from nala.config import get_backlog_url
+from nala.tools import assert_in_chokepoint, register
 
 
+@register("capture_task")
 def capture_task(title: str, project: str, priority: str, category: str) -> dict:
+    assert_in_chokepoint()
     payload = {
         "title": title,
         "project": project,

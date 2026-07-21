@@ -1,10 +1,11 @@
-"""Naive baseline: shell out to git across the tracked repos. Happy path only —
-this is the deliberately naive control group."""
+"""Shell out to git across the tracked repos. Only ever invoked by the
+chokepoint."""
 
 import subprocess
 from pathlib import Path
 
 from nala.config import PROJECTS, get_projects_root
+from nala.tools import assert_in_chokepoint, register
 
 
 def _git_info(repo_path: Path) -> dict:
@@ -40,6 +41,8 @@ def _git_info(repo_path: Path) -> dict:
     return {"repo": name, "branch": branch, "dirty": dirty, "ahead": ahead, "behind": behind}
 
 
+@register("report_status")
 def report_status() -> list[dict]:
+    assert_in_chokepoint()
     root = get_projects_root()
     return [_git_info(root / name) for name in PROJECTS]
