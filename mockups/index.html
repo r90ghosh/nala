@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis — Design Review · 5 Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#12151c; --line:#222734; --txt:#e7eaf0; --mut:#8a92a6; --accent:#4ea1ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 700px at 50% -10%,#161a24 0%,var(--bg) 60%);color:var(--txt);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 80px}
+  .kicker{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h1{font-size:40px;line-height:1.08;font-weight:800;margin:0 0 14px;letter-spacing:-.02em}
+  h1 span{color:var(--mut);font-weight:600}
+  .lede{color:var(--mut);font-size:16.5px;line-height:1.6;max-width:760px;margin:0 0 12px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 40px}
+  .chip{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.02)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:32px}}
+  .card{position:relative;display:block;text-decoration:none;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px 22px 20px;overflow:hidden;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease}
+  .card:hover{transform:translateY(-3px);border-color:#34406a;box-shadow:0 18px 50px -22px rgba(0,0,0,.8)}
+  .card .num{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mut)}
+  .card h2{font-size:21px;font-weight:700;margin:8px 0 8px;letter-spacing:-.01em}
+  .card p{color:var(--mut);font-size:14px;line-height:1.55;margin:0 0 16px}
+  .card .open{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);display:inline-flex;align-items:center;gap:7px}
+  .swatch{position:absolute;inset:0 0 auto auto;width:120px;height:120px;border-radius:0 18px 0 90px;opacity:.9}
+  .c1 .swatch{background:linear-gradient(135deg,#0a0e14,#1f6feb)}
+  .c2 .swatch{background:linear-gradient(135deg,#faf8f4,#7c83c9)}
+  .c3 .swatch{background:linear-gradient(135deg,#eef1f6,#5b8def 70%,#34d399)}
+  .c4 .swatch{background:linear-gradient(135deg,#0d1117,#2ea043)}
+  .c5 .swatch{background:linear-gradient(135deg,#3a1d6e,#0fb8c2)}
+  .feet{margin-top:42px;border-top:1px solid var(--line);padding-top:22px;color:var(--mut);font-size:13.5px;line-height:1.7}
+  .feet b{color:var(--txt);font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12.5px;color:var(--mut)}
+  .legend span{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Jarvis · v1 · coding/deploy leg</p>
+  <h1>Design review <span>— pick a direction</span></h1>
+  <p class="lede">Five takes on the same voice-first assistant. Same feature set in every one — voice conversation, a live observability feed, cross-project status, capture &amp; triage, an action queue with confirm-gating, a model-tier slider, and a spend meter. Each shows a <b>desktop</b> view and an <b>iPhone (iOS)</b> view. These are exploration artifacts, not a commitment — review, then we pick (or mix).</p>
+  <div class="meta">
+    <span class="chip">voice-first · pipeline → Claude</span>
+    <span class="chip">Mac + iOS · LiveKit</span>
+    <span class="chip">observability = the hero</span>
+    <span class="chip">7 real repos</span>
+    <span class="chip">BYOK · tier slider</span>
+  </div>
+
+  <div class="grid">
+    <a class="card c1" href="mockup-1-mission-control.html">
+      <div class="swatch"></div>
+      <div class="num">01</div>
+      <h2>Mission Control</h2>
+      <p>Ops-dense, dark, multi-panel. The live event feed sits dead center. Grafana / Datadog / NASA-ops energy — information-rich, for steering at a glance.</p>
+      <span class="open">Open mockup →</span>
+    </a>
+    <a class="card c2" href="mockup-2-conversation.html">
+      <div class="swatch"></div>
+      <div class="num">02</div>
+      <h2>Conversation-First</h2>
+      <p>The voice thread is the hero; everything else is calm and tucked away. Light, airy, premium — Superhuman / Things / refined Claude desktop.</p>
+      <span class="open">Open mockup →</span>
+    </a>
+    <a class="card c3" href="mockup-3-bento-dashboard.html">
+      <div class="swatch"></div>
+      <div class="num">03</div>
+      <h2>Glanceable Bento Dashboard</h2>
+      <p>Status-first home as a bento grid of cards with sparklines and a spend gauge. Voice as a floating button. Linear / Raycast / Vercel Analytics.</p>
+      <span class="open">Open mockup →</span>
+    </a>
+    <a class="card c4" href="mockup-4-terminal.html">
+      <div class="swatch"></div>
+      <div class="num">04</div>
+      <h2>Developer-Native Terminal</h2>
+      <p>A beautiful TUI — monospace, ⌘K command palette, structured log stream, box-drawing status table. For a dev who lives in the CLI.</p>
+      <span class="open">Open mockup →</span>
+    </a>
+    <a class="card c5" href="mockup-5-ambient-orb.html">
+      <div class="swatch"></div>
+      <div class="num">05</div>
+      <h2>Ambient Assistant</h2>
+      <p>Cinematic glassmorphism. A glowing Jarvis orb is the mic; frosted cards surface contextually around it. "Her" / Iron Man HUD, kept tasteful.</p>
+      <span class="open">Open mockup →</span>
+    </a>
+  </div>
+
+  <div class="feet">
+    <b>Feature legend</b> — every mockup carries numbered callouts for these:
+    <div class="legend">
+      <span>1 · voice conversation</span>
+      <span>2 · observability feed</span>
+      <span>3 · state-of-my-world</span>
+      <span>4 · capture &amp; triage</span>
+      <span>5 · action queue + confirm</span>
+      <span>6 · model-tier slider</span>
+      <span>7 · spend meter</span>
+    </div>
+    <p style="margin:16px 0 0">Full written plan: <b>~/.claude/plans/1-mac-mobile-virtual-gray.md</b></p>
+  </div>
+</div>
+</body>
+</html>

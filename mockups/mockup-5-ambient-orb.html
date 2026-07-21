@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis — Ambient Assistant</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --aurora-1: #4338ca;
+    --aurora-2: #7c3aed;
+    --aurora-3: #0d9488;
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --ink: #eef2ff;
+    --ink-dim: #b6bfe0;
+    --ink-faint: #8089b3;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--ink);
+    background: #05060f;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  .font-display { font-family: 'Space Grotesk', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ===== Aurora background ===== */
+  .aurora-bg {
+    position: relative;
+    background:
+      radial-gradient(1200px 700px at 15% 10%, rgba(67,56,202,0.45), transparent 60%),
+      radial-gradient(1100px 800px at 85% 20%, rgba(124,58,237,0.40), transparent 60%),
+      radial-gradient(1300px 900px at 50% 100%, rgba(13,148,136,0.38), transparent 60%),
+      linear-gradient(160deg, #070817 0%, #0b0a1f 40%, #08111a 100%);
+    overflow: hidden;
+  }
+  .aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.55;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  .aurora-blob.a { width: 620px; height: 620px; top: -160px; left: -120px; background: radial-gradient(circle, #6d4aff, transparent 70%); }
+  .aurora-blob.b { width: 560px; height: 560px; top: 5%; right: -140px; background: radial-gradient(circle, #b14bff, transparent 70%); animation-delay: -6s; }
+  .aurora-blob.c { width: 700px; height: 700px; bottom: -240px; left: 25%; background: radial-gradient(circle, #1fd6c0, transparent 70%); animation-delay: -12s; }
+  @keyframes drift {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(40px,-30px) scale(1.08); }
+    100% { transform: translate(-30px,40px) scale(0.96); }
+  }
+  /* faint star grid */
+  .stars::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(255,255,255,0.10) 1px, transparent 1px);
+    background-size: 46px 46px; opacity: 0.25;
+    mask-image: radial-gradient(120% 100% at 50% 0%, #000 30%, transparent 75%);
+  }
+
+  /* ===== Glass ===== */
+  .glass {
+    background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 18px 50px -18px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.10);
+  }
+  .glass-soft {
+    background: linear-gradient(160deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02));
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .hairline { border-color: rgba(255,255,255,0.09); }
+
+  /* ===== The Orb ===== */
+  .orb-wrap { position: relative; display: grid; place-items: center; }
+  .orb {
+    position: relative; width: 230px; height: 230px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, rgba(255,255,255,0.95), rgba(170,140,255,0.5) 22%, rgba(90,70,220,0.35) 45%, rgba(20,20,60,0.05) 70%),
+      radial-gradient(circle at 65% 75%, rgba(36,222,200,0.55), transparent 55%),
+      radial-gradient(circle at 50% 50%, #5a44d8, #2a2070 70%);
+    box-shadow:
+      0 0 60px 8px rgba(124,58,237,0.55),
+      0 0 130px 30px rgba(91,72,255,0.40),
+      0 0 220px 60px rgba(36,214,192,0.22),
+      inset 0 0 60px rgba(255,255,255,0.25);
+    animation: breathe 5.5s ease-in-out infinite;
+  }
+  .orb::before {
+    content: ""; position: absolute; inset: 14%; border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(255,255,255,0.0), rgba(255,255,255,0.35), rgba(36,214,192,0.0), rgba(178,75,255,0.35), rgba(255,255,255,0.0));
+    filter: blur(10px); opacity: 0.65; animation: spin 9s linear infinite;
+  }
+  .orb::after {
+    content: ""; position: absolute; top: 16%; left: 22%; width: 34%; height: 22%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.9), transparent 70%);
+    border-radius: 50%; filter: blur(4px);
+  }
+  @keyframes breathe {
+    0%,100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.035); filter: brightness(1.12); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .ring {
+    position: absolute; border-radius: 50%; border: 1px solid rgba(150,170,255,0.30);
+    animation: ripple 4.5s ease-out infinite;
+  }
+  .ring.r1 { width: 280px; height: 280px; }
+  .ring.r2 { width: 360px; height: 360px; animation-delay: 1.2s; }
+  .ring.r3 { width: 450px; height: 450px; animation-delay: 2.4s; }
+  @keyframes ripple {
+    0% { transform: scale(0.82); opacity: 0.0; }
+    25% { opacity: 0.55; }
+    100% { transform: scale(1.18); opacity: 0; }
+  }
+
+  /* waveform */
+  .wave { display: flex; align-items: center; gap: 4px; height: 30px; }
+  .wave span {
+    width: 3px; border-radius: 3px; background: linear-gradient(#dfe6ff, #8b7bff);
+    box-shadow: 0 0 8px rgba(139,123,255,0.8);
+    animation: bounce 1.1s ease-in-out infinite;
+  }
+  .wave span:nth-child(1){ animation-delay:-1.0s } .wave span:nth-child(2){ animation-delay:-0.85s }
+  .wave span:nth-child(3){ animation-delay:-0.7s } .wave span:nth-child(4){ animation-delay:-0.55s }
+  .wave span:nth-child(5){ animation-delay:-0.4s } .wave span:nth-child(6){ animation-delay:-0.55s }
+  .wave span:nth-child(7){ animation-delay:-0.7s } .wave span:nth-child(8){ animation-delay:-0.85s }
+  .wave span:nth-child(9){ animation-delay:-1.0s }
+  @keyframes bounce { 0%,100%{ height:6px } 50%{ height:28px } }
+
+  /* status dots */
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .dot-pulse { animation: dotpulse 2s ease-in-out infinite; }
+  @keyframes dotpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(52,211,153,0.5);} 50%{ box-shadow:0 0 0 5px rgba(52,211,153,0);} }
+
+  .chip {
+    font-size: 11px; letter-spacing: 0.02em; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.14); white-space: nowrap;
+  }
+  .scroll-soft::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scroll-soft::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 999px; }
+  .scroll-soft::-webkit-scrollbar-track { background: transparent; }
+
+  .callout-num {
+    display:inline-grid; place-items:center; width:20px; height:20px; border-radius:50%;
+    font-size:11px; font-weight:700; color:#fff;
+    background: linear-gradient(135deg,#7c3aed,#0d9488);
+    box-shadow: 0 0 12px rgba(124,58,237,0.6);
+  }
+
+  /* macOS window */
+  .mac-window { border-radius: 16px; overflow: hidden; box-shadow: 0 40px 120px -30px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.08); }
+  .traffic { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* iPhone */
+  .iphone {
+    width: 390px; height: 844px; border-radius: 56px; padding: 13px;
+    background: linear-gradient(160deg,#23263a,#0a0b16);
+    box-shadow: 0 50px 120px -30px rgba(0,0,0,0.9), inset 0 0 0 2px rgba(255,255,255,0.06), 0 0 0 11px #050610, 0 0 0 12px rgba(255,255,255,0.05);
+    position: relative;
+  }
+  .iphone-screen { width: 100%; height: 100%; border-radius: 44px; overflow: hidden; position: relative; }
+  .dynamic-island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 35px; background: #000; border-radius: 20px; z-index: 40;
+    display:flex; align-items:center; justify-content:flex-end; gap:8px; padding-right:12px;
+  }
+
+  .feature-glow:hover { box-shadow: 0 0 0 1px rgba(124,58,237,0.5), 0 22px 60px -22px rgba(124,58,237,0.55); transition: box-shadow .3s; }
+  .meter-track { background: rgba(255,255,255,0.10); border-radius: 999px; overflow: hidden; }
+  .meter-fill { background: linear-gradient(90deg,#34d399,#fbbf24); height: 100%; border-radius: 999px; }
+
+  .tier-track { position: relative; height: 6px; border-radius: 999px; background: linear-gradient(90deg,#22d3ee,#a78bfa,#fb7185); }
+  .tier-knob { position:absolute; top:50%; width:18px; height:18px; border-radius:50%; transform: translate(-50%,-50%);
+    background:#fff; box-shadow:0 0 0 4px rgba(167,139,250,0.35), 0 4px 12px rgba(0,0,0,0.5); }
+
+  .caption-glow { text-shadow: 0 0 22px rgba(150,140,255,0.55); }
+  .legend-pill { backdrop-filter: blur(10px); }
+</style>
+</head>
+<body class="aurora-bg stars">
+  <div class="aurora-blob a"></div>
+  <div class="aurora-blob b"></div>
+  <div class="aurora-blob c"></div>
+
+  <!-- ===================== HEADER BAND ===================== -->
+  <header class="relative z-10 max-w-[1340px] mx-auto px-6 pt-8 pb-4">
+    <div class="glass rounded-2xl px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="relative">
+          <div class="w-12 h-12 rounded-2xl grid place-items-center"
+               style="background:radial-gradient(circle at 35% 30%, #fff, #8b7bff 45%, #4632b8 80%); box-shadow:0 0 24px rgba(124,58,237,0.7);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" fill="#fff"/><circle cx="12" cy="12" r="8" stroke="#fff" stroke-opacity="0.6" stroke-width="1.2"/></svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-3">
+            <h1 class="font-display text-2xl font-700 tracking-tight">Ambient Assistant</h1>
+            <span class="chip" style="background:rgba(124,58,237,0.18); color:#d8c9ff; border-color:rgba(167,139,250,0.4)">Jarvis · v1 — the coding leg</span>
+          </div>
+          <p class="text-sm mt-1" style="color:var(--ink-dim)">A voice-first AI you watch and steer — the orb is the mic, your world orbits it. Cinematic glass HUD, “Her”-meets-Iron-Man.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="chip flex items-center gap-2" style="background:rgba(251,191,36,0.12); color:#fcd980; border-color:rgba(251,191,36,0.35)">
+          <span class="dot" style="background:#fbbf24"></span> in-doubt actions: 1
+        </span>
+        <span class="chip flex items-center gap-2" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.35)">
+          <span class="dot dot-pulse" style="background:#34d399"></span> listening
+        </span>
+        <span class="chip" style="background:rgba(255,255,255,0.06); color:var(--ink-dim)">BYOK · Anthropic</span>
+      </div>
+    </div>
+
+    <!-- Feature legend -->
+    <div class="mt-4 glass-soft rounded-2xl px-5 py-3.5">
+      <div class="flex items-center gap-2 flex-wrap text-xs" style="color:var(--ink-dim)">
+        <span class="font-semibold" style="color:var(--ink)">7 features, mapped:</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">1</span> Voice + orb</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">2</span> Observability feed</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">3</span> State-of-my-world</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">4</span> Capture &amp; triage</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">5</span> Action queue</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">6</span> Model tier slider</span>
+        <span class="legend-pill chip flex items-center gap-1.5"><span class="callout-num">7</span> Spend meter</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== DESKTOP VIEW ===================== -->
+  <section class="relative z-10 max-w-[1340px] mx-auto px-6 pt-6 pb-2">
+    <div class="flex items-center gap-3 mb-3">
+      <span class="font-mono text-xs tracking-widest uppercase" style="color:var(--ink-faint)">Desktop</span>
+      <span class="text-xs" style="color:var(--ink-faint)">— macOS · 1280px</span>
+      <div class="flex-1 h-px" style="background:linear-gradient(90deg,rgba(255,255,255,0.18),transparent)"></div>
+    </div>
+
+    <div class="mac-window">
+      <!-- title bar -->
+      <div class="flex items-center gap-3 px-4 py-2.5" style="background:rgba(12,13,28,0.85); backdrop-filter:blur(14px); border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div class="flex gap-2">
+          <span class="traffic" style="background:#ff5f57"></span>
+          <span class="traffic" style="background:#febc2e"></span>
+          <span class="traffic" style="background:#28c840"></span>
+        </div>
+        <div class="flex-1 flex justify-center">
+          <div class="glass-soft rounded-lg px-4 py-1 text-xs flex items-center gap-2" style="color:var(--ink-dim)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M12 3v8m0 0a3 3 0 003-3V6a3 3 0 00-6 0v2a3 3 0 003 3zm0 8v3m-4 0h8" stroke="#9af0cf" stroke-width="1.6" stroke-linecap="round"/></svg>
+            jarvis · ambient assistant
+          </div>
+        </div>
+        <div class="text-xs font-mono" style="color:var(--ink-faint)">⌥Space to talk</div>
+      </div>
+
+      <!-- desktop canvas -->
+      <div class="aurora-bg stars relative" style="height:760px">
+        <div class="aurora-blob a" style="opacity:0.4"></div>
+        <div class="aurora-blob c" style="opacity:0.45"></div>
+
+        <div class="relative z-10 grid h-full" style="grid-template-columns: 1fr 380px;">
+          <!-- LEFT: orb + orbiting cards -->
+          <div class="relative">
+            <!-- (3) State cards — floating top-left -->
+            <div class="absolute left-7 top-7 w-[330px] feature-glow">
+              <div class="glass rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-2">
+                    <span class="callout-num">3</span>
+                    <span class="font-display text-sm font-600">State of my world</span>
+                  </div>
+                  <span class="text-xs font-mono" style="color:#9af0cf">6 / 7 clean</span>
+                </div>
+                <div class="space-y-2 max-h-[270px] overflow-y-auto scroll-soft pr-1">
+                  <!-- repo rows -->
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="dot" style="background:#fbbf24"></span>
+                        <span class="font-mono text-[13px]">parentlogs</span>
+                      </div>
+                      <span class="chip" style="background:rgba(251,191,36,0.14); color:#fcd980; border-color:rgba(251,191,36,0.3)">dirty</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)">
+                      <span class="font-mono">main</span><span>·</span>
+                      <span style="color:#c4b5fd">2 PRs</span><span>·</span>
+                      <span>uncommitted migration</span><span>·</span>
+                      <span style="color:#9af0cf">✓ deploy</span>
+                    </div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="dot" style="background:#f87171"></span>
+                        <span class="font-mono text-[13px]">travel_ai</span>
+                      </div>
+                      <span class="chip" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.3)">deploy failed</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)">
+                      <span class="font-mono">main</span><span>·</span>
+                      <span>clean</span><span>·</span>
+                      <span style="color:#fca5a5">Netlify ✗ 3h ago</span>
+                    </div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="dot" style="background:#34d399"></span>
+                        <span class="font-mono text-[13px]">hoa-community-platform</span>
+                      </div>
+                      <span class="chip" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)">
+                      <span class="font-mono">dev</span><span>·</span><span style="color:#c4b5fd">↑2 ↓0</span><span>·</span><span style="color:#9af0cf">✓ deploy</span>
+                    </div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[13px]">life_os</span></div>
+                      <span class="chip" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)"><span class="font-mono">main</span><span>·</span><span>0 PRs</span><span>·</span><span style="color:#9af0cf">✓ deploy</span></div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[13px]">community_portal</span></div>
+                      <span class="chip" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)"><span class="font-mono">main</span><span>·</span><span>Expo build ✓</span></div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[13px]">legal-ai-assistant</span></div>
+                      <span class="chip" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)"><span class="font-mono">main</span><span>·</span><span>FastAPI ✓</span></div>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[13px]">last_mile</span></div>
+                      <span class="chip" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1.5 text-[11px]" style="color:var(--ink-faint)"><span class="font-mono">main</span><span>·</span><span>0 PRs</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- (4) Proposed task card — floating top-right of orb area -->
+            <div class="absolute right-6 top-7 w-[290px] feature-glow">
+              <div class="glass rounded-2xl p-4" style="box-shadow:0 0 0 1px rgba(124,58,237,0.35), 0 22px 60px -22px rgba(124,58,237,0.5)">
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="callout-num">4</span>
+                  <span class="font-display text-sm font-600">Proposed task</span>
+                  <span class="chip ml-auto" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.35)">from voice</span>
+                </div>
+                <p class="text-xs mb-2" style="color:var(--ink-faint)">“File a bug — the Stripe webhook in hoa isn’t idempotent.”</p>
+                <div class="glass-soft rounded-xl p-3">
+                  <div class="text-[13px] font-600 mb-2.5">Stripe webhook not idempotent</div>
+                  <div class="flex flex-wrap gap-1.5">
+                    <span class="chip font-mono" style="background:rgba(255,255,255,0.06)">hoa-community-platform</span>
+                    <span class="chip" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.3)">priority: high</span>
+                    <span class="chip" style="background:rgba(124,58,237,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">category: bug</span>
+                  </div>
+                </div>
+                <div class="flex gap-2 mt-3">
+                  <button class="flex-1 text-xs font-600 py-2 rounded-lg" style="background:linear-gradient(135deg,#7c3aed,#0d9488); color:#fff; box-shadow:0 6px 18px -6px rgba(124,58,237,0.6)">Confirm → backlog</button>
+                  <button class="text-xs py-2 px-3 rounded-lg glass-soft" style="color:var(--ink-dim)">Edit</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- ORB center -->
+            <div class="absolute left-1/2 top-1/2" style="transform:translate(-50%,-46%)">
+              <div class="orb-wrap">
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="ring r3"></div>
+                <div class="orb"></div>
+              </div>
+            </div>
+
+            <!-- (1) Voice captions + waveform — below orb -->
+            <div class="absolute left-1/2" style="bottom:34px; transform:translateX(-50%); width:560px;">
+              <div class="glass rounded-2xl px-5 py-4 feature-glow">
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="callout-num">1</span>
+                  <div class="wave">
+                    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                  <span class="text-[11px] font-mono ml-auto flex items-center gap-1.5" style="color:#9af0cf">
+                    <span class="dot dot-pulse" style="background:#34d399"></span> Jarvis speaking
+                  </span>
+                </div>
+                <div class="space-y-2">
+                  <div class="text-[13px]" style="color:var(--ink-faint)"><span class="font-mono text-[11px] mr-2" style="color:#c4b5fd">You</span>What’s the state of my projects?</div>
+                  <div class="text-[15px] leading-relaxed caption-glow" style="color:var(--ink)">
+                    <span class="font-mono text-[11px] mr-2" style="color:#9af0cf">Jarvis</span>“6 of 7 clean. parentlogs has 2 open PRs and an uncommitted migration. travel_ai’s last Netlify deploy failed 3 hours ago. 1 in-doubt action from earlier.”
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- (6)(7) bottom strip: tier + spend, floating left -->
+            <div class="absolute left-7 w-[330px]" style="bottom:34px;">
+              <div class="glass rounded-2xl p-4 space-y-4 feature-glow">
+                <!-- tier -->
+                <div>
+                  <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2"><span class="callout-num">6</span><span class="font-display text-sm font-600">Model tier</span></div>
+                    <span class="chip font-mono" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">Sonnet</span>
+                  </div>
+                  <div class="tier-track">
+                    <div class="tier-knob" style="left:50%"></div>
+                  </div>
+                  <div class="flex justify-between mt-2 text-[10px] font-mono" style="color:var(--ink-faint)">
+                    <span>Haiku · cheap</span><span style="color:#d8c9ff">Sonnet</span><span>Opus · $$$</span>
+                  </div>
+                  <div class="mt-3 glass-soft rounded-lg px-3 py-2 flex items-center gap-2 text-[11px]" style="color:#fcd980; border-color:rgba(251,191,36,0.3)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 9v4m0 4h.01M10.3 3.86l-8 14A2 2 0 004 21h16a2 2 0 001.7-3.14l-8-14a2 2 0 00-3.4 0z" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    This looks hard — bump to Opus?
+                    <button class="ml-auto chip" style="background:rgba(251,191,36,0.18); color:#fcd980; border-color:rgba(251,191,36,0.4)">Bump</button>
+                  </div>
+                </div>
+                <!-- spend -->
+                <div class="pt-1 border-t hairline">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2"><span class="callout-num">7</span><span class="font-display text-sm font-600">Spend today</span></div>
+                    <span class="font-mono text-sm"><span style="color:#9af0cf">$2.14</span><span style="color:var(--ink-faint)"> / $10.00</span></span>
+                  </div>
+                  <div class="meter-track h-2 mb-2.5"><div class="meter-fill" style="width:21.4%"></div></div>
+                  <div class="flex gap-2 text-[10px] font-mono" style="color:var(--ink-faint)">
+                    <span class="chip" style="background:rgba(255,255,255,0.05)">Haiku $0.18</span>
+                    <span class="chip" style="background:rgba(255,255,255,0.05)">Sonnet $1.42</span>
+                    <span class="chip" style="background:rgba(255,255,255,0.05)">Opus $0.54</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: (2) Observability + (5) Action queue glass panel -->
+          <div class="h-full border-l" style="border-color:rgba(255,255,255,0.07); background:rgba(8,9,22,0.35); backdrop-filter:blur(8px)">
+            <div class="h-full flex flex-col">
+              <!-- observability -->
+              <div class="flex-1 min-h-0 flex flex-col p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-2"><span class="callout-num">2</span><span class="font-display text-sm font-600">Observability feed</span></div>
+                  <span class="text-[10px] font-mono flex items-center gap-1.5" style="color:#9af0cf"><span class="dot dot-pulse" style="background:#34d399"></span>live</span>
+                </div>
+                <p class="text-[11px] mb-3" style="color:var(--ink-faint)">utterance → stt → llm → tool — watch &amp; steer every step.</p>
+                <div class="flex-1 min-h-0 overflow-y-auto scroll-soft space-y-1.5 pr-1 font-mono text-[11px]">
+                  <!-- event rows -->
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:01</span>
+                    <span class="chip" style="background:rgba(96,165,250,0.14); color:#bfdbfe; border-color:rgba(96,165,250,0.3)">utterance</span>
+                    <span class="truncate" style="color:var(--ink-dim)">“state of my projects?”</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:01</span>
+                    <span class="chip" style="background:rgba(96,165,250,0.14); color:#bfdbfe; border-color:rgba(96,165,250,0.3)">stt_result</span>
+                    <span class="ml-auto" style="color:#9af0cf">128ms</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:02</span>
+                    <span class="chip" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">llm_request</span>
+                    <span style="color:var(--ink-faint)">sonnet</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:02</span>
+                    <span class="chip" style="background:rgba(52,211,153,0.14); color:#9af0cf; border-color:rgba(52,211,153,0.3)">tool_call</span>
+                    <span style="color:var(--ink-dim)">git.status</span>
+                    <span class="ml-auto" style="color:#9af0cf">412ms</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:03</span>
+                    <span class="chip" style="background:rgba(52,211,153,0.14); color:#9af0cf; border-color:rgba(52,211,153,0.3)">tool_result</span>
+                    <span style="color:var(--ink-dim)">7 repos</span>
+                    <span class="ml-auto" style="color:#9af0cf">63ms</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2" style="border-color:rgba(248,113,113,0.35)">
+                    <span style="color:var(--ink-faint)">14:22:03</span>
+                    <span class="chip" style="background:rgba(248,113,113,0.16); color:#fca5a5; border-color:rgba(248,113,113,0.35)">error</span>
+                    <span class="truncate" style="color:#fca5a5">netlify: travel_ai build ✗</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:04</span>
+                    <span class="chip" style="background:rgba(251,191,36,0.14); color:#fcd980; border-color:rgba(251,191,36,0.3)">reconcile</span>
+                    <span style="color:var(--ink-dim)">in-doubt → 1</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:04</span>
+                    <span class="chip" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">llm_response</span>
+                    <span class="ml-auto" style="color:#9af0cf">980ms</span>
+                  </div>
+                  <div class="glass-soft rounded-lg px-2.5 py-2 flex items-center gap-2">
+                    <span style="color:var(--ink-faint)">14:22:05</span>
+                    <span class="chip" style="background:rgba(96,165,250,0.14); color:#bfdbfe; border-color:rgba(96,165,250,0.3)">utterance</span>
+                    <span class="truncate" style="color:var(--ink-dim)">“file a bug — stripe webhook…”</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- (5) Action queue -->
+              <div class="border-t p-4" style="border-color:rgba(255,255,255,0.08); background:rgba(124,58,237,0.06)">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-2"><span class="callout-num">5</span><span class="font-display text-sm font-600">Action queue</span></div>
+                  <span class="chip flex items-center gap-1.5" style="background:rgba(251,191,36,0.14); color:#fcd980; border-color:rgba(251,191,36,0.35)"><span class="dot" style="background:#fbbf24"></span>1 awaiting</span>
+                </div>
+                <div class="space-y-1.5">
+                  <!-- awaiting confirm row (irreversible) -->
+                  <div class="glass-soft rounded-xl px-3 py-2.5" style="border-color:rgba(251,191,36,0.35)">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[12px]">Mark task “Stripe webhook” done</span>
+                      <span class="chip" style="background:rgba(251,191,36,0.16); color:#fcd980; border-color:rgba(251,191,36,0.4)">awaiting_confirm</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-2">
+                      <span class="text-[10px]" style="color:#fca5a5">⚠ irreversible</span>
+                      <div class="ml-auto flex gap-2">
+                        <button class="chip" style="background:linear-gradient(135deg,#34d399,#0d9488); color:#04241c; border-color:transparent; font-weight:700">Confirm</button>
+                        <button class="chip" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.35)">Reject</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between glass-soft rounded-xl px-3 py-2 text-[12px]">
+                    <span>Open PR review · parentlogs #41</span>
+                    <span class="chip" style="background:rgba(96,165,250,0.14); color:#bfdbfe; border-color:rgba(96,165,250,0.3)">pending</span>
+                  </div>
+                  <div class="flex items-center justify-between glass-soft rounded-xl px-3 py-2 text-[12px]">
+                    <span>File bug → backlog · hoa</span>
+                    <span class="chip" style="background:rgba(52,211,153,0.14); color:#9af0cf; border-color:rgba(52,211,153,0.3)">done</span>
+                  </div>
+                  <div class="flex items-center justify-between glass-soft rounded-xl px-3 py-2 text-[12px]">
+                    <span>Retry Netlify deploy · travel_ai</span>
+                    <span class="chip" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.3)">failed</span>
+                  </div>
+                  <div class="flex items-center justify-between glass-soft rounded-xl px-3 py-2 text-[12px] opacity-70">
+                    <span>Auto-commit migration · parentlogs</span>
+                    <span class="chip" style="background:rgba(255,255,255,0.06); color:var(--ink-faint)">rejected</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== iPHONE VIEW ===================== -->
+  <section class="relative z-10 max-w-[1340px] mx-auto px-6 pt-12 pb-20">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="font-mono text-xs tracking-widest uppercase" style="color:var(--ink-faint)">iPhone — iOS</span>
+      <span class="text-xs" style="color:var(--ink-faint)">— orb dominates · swipe-up frosted panels · big tap-to-talk · 390px</span>
+      <div class="flex-1 h-px" style="background:linear-gradient(90deg,rgba(255,255,255,0.18),transparent)"></div>
+    </div>
+
+    <div class="flex flex-wrap gap-10 justify-center items-start">
+
+      <!-- PHONE 1: Orb home + captions -->
+      <div class="flex flex-col items-center gap-3">
+        <div class="iphone">
+          <div class="dynamic-island">
+            <span class="dot dot-pulse" style="background:#34d399"></span>
+          </div>
+          <div class="iphone-screen aurora-bg stars">
+            <div class="aurora-blob b" style="opacity:0.5; width:360px; height:360px"></div>
+            <!-- iOS status bar -->
+            <div class="relative z-30 flex items-center justify-between px-7 pt-3.5 text-[13px] font-600">
+              <span>9:41</span>
+              <div class="flex items-center gap-1.5">
+                <svg width="17" height="11" viewBox="0 0 17 11" fill="none"><rect x="0" y="6" width="3" height="5" rx="1" fill="#fff"/><rect x="4.5" y="4" width="3" height="7" rx="1" fill="#fff"/><rect x="9" y="2" width="3" height="9" rx="1" fill="#fff"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#fff" opacity="0.5"/></svg>
+                <svg width="16" height="11" viewBox="0 0 16 11" fill="none"><path d="M8 2.5C5.5 2.5 3.3 3.5 1.7 5.1l1.4 1.4C4.4 5.2 6.1 4.5 8 4.5s3.6.7 4.9 2l1.4-1.4C12.7 3.5 10.5 2.5 8 2.5z" fill="#fff"/><circle cx="8" cy="9" r="1.4" fill="#fff"/></svg>
+                <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="#fff" stroke-opacity="0.5"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="#fff"/><rect x="23" y="4" width="1.5" height="4" rx="0.7" fill="#fff" opacity="0.5"/></svg>
+              </div>
+            </div>
+
+            <!-- top bar: in-doubt + spend -->
+            <div class="relative z-20 flex items-center justify-between px-4 mt-3">
+              <span class="chip flex items-center gap-1.5" style="background:rgba(251,191,36,0.14); color:#fcd980; border-color:rgba(251,191,36,0.35)"><span class="dot" style="background:#fbbf24"></span>in-doubt: 1</span>
+              <span class="chip font-mono" style="background:rgba(52,211,153,0.12); color:#9af0cf; border-color:rgba(52,211,153,0.3)">$2.14 / $10</span>
+            </div>
+
+            <!-- big orb -->
+            <div class="relative z-10 grid place-items-center" style="height:300px; margin-top:14px">
+              <div class="orb-wrap" style="transform:scale(0.92)">
+                <div class="ring r1"></div>
+                <div class="ring r2"></div>
+                <div class="ring r3"></div>
+                <div class="orb"></div>
+              </div>
+            </div>
+
+            <!-- captions -->
+            <div class="relative z-10 px-4">
+              <div class="glass rounded-2xl px-4 py-3.5">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="callout-num">1</span>
+                  <div class="wave" style="height:22px">
+                    <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                  </div>
+                  <span class="text-[10px] font-mono ml-auto flex items-center gap-1" style="color:#9af0cf"><span class="dot dot-pulse" style="background:#34d399"></span>speaking</span>
+                </div>
+                <div class="text-[11px] mb-1" style="color:var(--ink-faint)"><span class="font-mono mr-1" style="color:#c4b5fd">You</span>What’s the state of my projects?</div>
+                <div class="text-[13px] leading-snug caption-glow"><span class="font-mono text-[10px] mr-1" style="color:#9af0cf">Jarvis</span>“6 of 7 clean. parentlogs has 2 open PRs and an uncommitted migration. travel_ai’s last Netlify deploy failed 3 hours ago. 1 in-doubt action.”</div>
+              </div>
+            </div>
+
+            <!-- swipe-up hint + tap to talk -->
+            <div class="absolute bottom-0 left-0 right-0 z-20 px-4 pb-7 pt-10" style="background:linear-gradient(to top, rgba(5,6,16,0.85), transparent)">
+              <div class="text-center text-[11px] mb-3 flex items-center justify-center gap-1.5" style="color:var(--ink-faint)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 19V5m0 0l-6 6m6-6l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Swipe up for status · actions · feed
+              </div>
+              <button class="w-full py-4 rounded-2xl font-display font-600 text-[15px] flex items-center justify-center gap-2.5"
+                style="background:linear-gradient(135deg,#7c3aed,#0d9488); color:#fff; box-shadow:0 12px 36px -10px rgba(124,58,237,0.7), inset 0 1px 0 rgba(255,255,255,0.25)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z" fill="#fff"/><path d="M19 11a7 7 0 01-14 0M12 18v3" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+                Hold to talk
+              </button>
+            </div>
+          </div>
+        </div>
+        <span class="text-xs" style="color:var(--ink-faint)">Home · orb is the mic</span>
+      </div>
+
+      <!-- PHONE 2: Swipe-up sheet — status + capture -->
+      <div class="flex flex-col items-center gap-3">
+        <div class="iphone">
+          <div class="dynamic-island"><span class="dot dot-pulse" style="background:#34d399"></span></div>
+          <div class="iphone-screen aurora-bg stars">
+            <div class="aurora-blob c" style="opacity:0.4; width:340px; height:340px"></div>
+            <div class="relative z-30 flex items-center justify-between px-7 pt-3.5 text-[13px] font-600">
+              <span>9:41</span>
+              <div class="flex items-center gap-1.5">
+                <svg width="17" height="11" viewBox="0 0 17 11" fill="none"><rect x="0" y="6" width="3" height="5" rx="1" fill="#fff"/><rect x="4.5" y="4" width="3" height="7" rx="1" fill="#fff"/><rect x="9" y="2" width="3" height="9" rx="1" fill="#fff"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#fff" opacity="0.5"/></svg>
+                <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="#fff" stroke-opacity="0.5"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="#fff"/></svg>
+              </div>
+            </div>
+
+            <!-- small orb peeking -->
+            <div class="relative z-10 grid place-items-center" style="height:108px; margin-top:6px">
+              <div class="orb" style="width:84px; height:84px; box-shadow:0 0 40px 6px rgba(124,58,237,0.55), inset 0 0 28px rgba(255,255,255,0.25)"></div>
+            </div>
+
+            <!-- swipe-up sheet -->
+            <div class="absolute left-0 right-0 bottom-0 z-20 glass" style="border-radius:30px 30px 44px 44px; height:600px; padding:14px 14px 28px">
+              <div class="w-10 h-1 rounded-full mx-auto mb-3" style="background:rgba(255,255,255,0.25)"></div>
+
+              <!-- tabs -->
+              <div class="flex gap-1.5 mb-3 text-[11px] font-600">
+                <span class="chip" style="background:rgba(124,58,237,0.22); color:#fff; border-color:rgba(167,139,250,0.4)">Status</span>
+                <span class="chip" style="color:var(--ink-faint)">Actions</span>
+                <span class="chip" style="color:var(--ink-faint)">Feed</span>
+                <span class="chip" style="color:var(--ink-faint)">Spend</span>
+              </div>
+
+              <div class="overflow-y-auto scroll-soft" style="max-height:530px">
+                <!-- (4) capture card surfaced -->
+                <div class="glass-soft rounded-2xl p-3.5 mb-3" style="border-color:rgba(167,139,250,0.35)">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="callout-num">4</span>
+                    <span class="font-display text-[13px] font-600">Proposed task</span>
+                    <span class="chip ml-auto" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">from voice</span>
+                  </div>
+                  <p class="text-[10px] mb-2" style="color:var(--ink-faint)">“File a bug — Stripe webhook in hoa isn’t idempotent.”</p>
+                  <div class="text-[13px] font-600 mb-2">Stripe webhook not idempotent</div>
+                  <div class="flex flex-wrap gap-1.5 mb-3">
+                    <span class="chip font-mono text-[10px]" style="background:rgba(255,255,255,0.06)">hoa-community-platform</span>
+                    <span class="chip text-[10px]" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.3)">high</span>
+                    <span class="chip text-[10px]" style="background:rgba(124,58,237,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">bug</span>
+                  </div>
+                  <div class="flex gap-2">
+                    <button class="flex-1 text-[12px] font-600 py-2 rounded-xl" style="background:linear-gradient(135deg,#7c3aed,#0d9488); color:#fff">Confirm → backlog</button>
+                    <button class="text-[12px] py-2 px-3 rounded-xl glass-soft" style="color:var(--ink-dim)">Edit</button>
+                  </div>
+                </div>
+
+                <!-- (3) state cards -->
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="callout-num">3</span><span class="font-display text-[13px] font-600">State of my world</span>
+                  <span class="text-[11px] font-mono ml-auto" style="color:#9af0cf">6 / 7 clean</span>
+                </div>
+                <div class="space-y-1.5 mb-3">
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#fbbf24"></span><span class="font-mono text-[12px]">parentlogs</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">main · 2 PRs · dirty</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between" style="border-color:rgba(248,113,113,0.3)">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#f87171"></span><span class="font-mono text-[12px]">travel_ai</span></div>
+                    <span class="text-[10px]" style="color:#fca5a5">deploy ✗ 3h</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[12px]">hoa-community-platform</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">dev · ↑2 · ✓</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[12px]">life_os</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">main · ✓</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[12px]">community_portal</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">Expo ✓</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[12px]">legal-ai-assistant</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">FastAPI ✓</span>
+                  </div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2"><span class="dot" style="background:#34d399"></span><span class="font-mono text-[12px]">last_mile</span></div>
+                    <span class="text-[10px]" style="color:var(--ink-faint)">main · ✓</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span class="text-xs" style="color:var(--ink-faint)">Swipe-up · status &amp; capture</span>
+      </div>
+
+      <!-- PHONE 3: Actions + tier + spend + feed -->
+      <div class="flex flex-col items-center gap-3">
+        <div class="iphone">
+          <div class="dynamic-island"><span class="dot dot-pulse" style="background:#fbbf24"></span></div>
+          <div class="iphone-screen aurora-bg stars">
+            <div class="aurora-blob a" style="opacity:0.4; width:320px; height:320px"></div>
+            <div class="relative z-30 flex items-center justify-between px-7 pt-3.5 text-[13px] font-600">
+              <span>9:41</span>
+              <div class="flex items-center gap-1.5">
+                <svg width="17" height="11" viewBox="0 0 17 11" fill="none"><rect x="0" y="6" width="3" height="5" rx="1" fill="#fff"/><rect x="4.5" y="4" width="3" height="7" rx="1" fill="#fff"/><rect x="9" y="2" width="3" height="9" rx="1" fill="#fff"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#fff" opacity="0.5"/></svg>
+                <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="#fff" stroke-opacity="0.5"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="#fff"/></svg>
+              </div>
+            </div>
+
+            <div class="relative z-10 grid place-items-center" style="height:84px; margin-top:6px">
+              <div class="orb" style="width:64px; height:64px; box-shadow:0 0 32px 5px rgba(124,58,237,0.55), inset 0 0 22px rgba(255,255,255,0.25)"></div>
+            </div>
+
+            <div class="absolute left-0 right-0 bottom-0 z-20 glass" style="border-radius:30px 30px 44px 44px; height:628px; padding:14px 14px 24px">
+              <div class="w-10 h-1 rounded-full mx-auto mb-3" style="background:rgba(255,255,255,0.25)"></div>
+              <div class="flex gap-1.5 mb-3 text-[11px] font-600">
+                <span class="chip" style="color:var(--ink-faint)">Status</span>
+                <span class="chip" style="background:rgba(124,58,237,0.22); color:#fff; border-color:rgba(167,139,250,0.4)">Actions</span>
+                <span class="chip" style="color:var(--ink-faint)">Feed</span>
+                <span class="chip" style="color:var(--ink-faint)">Spend</span>
+              </div>
+
+              <div class="overflow-y-auto scroll-soft" style="max-height:548px">
+                <!-- (5) action queue -->
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="callout-num">5</span><span class="font-display text-[13px] font-600">Action queue</span>
+                  <span class="chip text-[10px] ml-auto" style="background:rgba(251,191,36,0.14); color:#fcd980; border-color:rgba(251,191,36,0.3)">1 awaiting</span>
+                </div>
+                <div class="glass-soft rounded-2xl p-3 mb-2" style="border-color:rgba(251,191,36,0.35)">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[12px] font-600">Mark task done</span>
+                    <span class="chip text-[10px]" style="background:rgba(251,191,36,0.16); color:#fcd980; border-color:rgba(251,191,36,0.4)">awaiting_confirm</span>
+                  </div>
+                  <p class="text-[10px] mb-2.5" style="color:var(--ink-faint)">“Stripe webhook not idempotent” · <span style="color:#fca5a5">⚠ irreversible</span></p>
+                  <div class="flex gap-2">
+                    <button class="flex-1 text-[12px] font-700 py-2 rounded-xl" style="background:linear-gradient(135deg,#34d399,#0d9488); color:#04241c">Confirm</button>
+                    <button class="flex-1 text-[12px] py-2 rounded-xl" style="background:rgba(248,113,113,0.14); color:#fca5a5; border:1px solid rgba(248,113,113,0.35)">Reject</button>
+                  </div>
+                </div>
+                <div class="space-y-1.5 mb-3 text-[12px]">
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between"><span>PR review · parentlogs #41</span><span class="chip text-[10px]" style="background:rgba(96,165,250,0.14); color:#bfdbfe; border-color:rgba(96,165,250,0.3)">pending</span></div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between"><span>File bug → backlog</span><span class="chip text-[10px]" style="background:rgba(52,211,153,0.14); color:#9af0cf; border-color:rgba(52,211,153,0.3)">done</span></div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between"><span>Retry deploy · travel_ai</span><span class="chip text-[10px]" style="background:rgba(248,113,113,0.14); color:#fca5a5; border-color:rgba(248,113,113,0.3)">failed</span></div>
+                  <div class="glass-soft rounded-xl px-3 py-2 flex items-center justify-between opacity-70"><span>Auto-commit migration</span><span class="chip text-[10px]" style="background:rgba(255,255,255,0.06); color:var(--ink-faint)">rejected</span></div>
+                </div>
+
+                <!-- (6) tier -->
+                <div class="glass-soft rounded-2xl p-3 mb-2.5">
+                  <div class="flex items-center gap-2 mb-2.5">
+                    <span class="callout-num">6</span><span class="font-display text-[13px] font-600">Model tier</span>
+                    <span class="chip text-[10px] font-mono ml-auto" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">Sonnet</span>
+                  </div>
+                  <div class="tier-track"><div class="tier-knob" style="left:50%"></div></div>
+                  <div class="flex justify-between mt-2 text-[9px] font-mono" style="color:var(--ink-faint)"><span>Haiku</span><span style="color:#d8c9ff">Sonnet</span><span>Opus</span></div>
+                  <div class="mt-2.5 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 text-[10px]" style="background:rgba(251,191,36,0.1); color:#fcd980; border:1px solid rgba(251,191,36,0.3)">
+                    This looks hard — bump to Opus?
+                    <button class="ml-auto chip text-[10px]" style="background:rgba(251,191,36,0.2); color:#fcd980; border-color:rgba(251,191,36,0.4)">Bump</button>
+                  </div>
+                </div>
+
+                <!-- (7) spend -->
+                <div class="glass-soft rounded-2xl p-3 mb-2.5">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2"><span class="callout-num">7</span><span class="font-display text-[13px] font-600">Spend today</span></div>
+                    <span class="font-mono text-[12px]"><span style="color:#9af0cf">$2.14</span><span style="color:var(--ink-faint)"> / $10</span></span>
+                  </div>
+                  <div class="meter-track h-2 mb-2"><div class="meter-fill" style="width:21.4%"></div></div>
+                  <div class="flex gap-1.5 text-[9px] font-mono" style="color:var(--ink-faint)">
+                    <span class="chip text-[9px]" style="background:rgba(255,255,255,0.05)">Haiku $0.18</span>
+                    <span class="chip text-[9px]" style="background:rgba(255,255,255,0.05)">Sonnet $1.42</span>
+                    <span class="chip text-[9px]" style="background:rgba(255,255,255,0.05)">Opus $0.54</span>
+                  </div>
+                </div>
+
+                <!-- (2) feed mini -->
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="callout-num">2</span><span class="font-display text-[13px] font-600">Feed</span>
+                  <span class="text-[10px] font-mono ml-auto flex items-center gap-1" style="color:#9af0cf"><span class="dot dot-pulse" style="background:#34d399"></span>live</span>
+                </div>
+                <div class="space-y-1 font-mono text-[10px]">
+                  <div class="glass-soft rounded-lg px-2.5 py-1.5 flex items-center gap-2"><span style="color:var(--ink-faint)">14:22:02</span><span class="chip text-[9px]" style="background:rgba(52,211,153,0.14); color:#9af0cf; border-color:rgba(52,211,153,0.3)">tool_call</span><span class="ml-auto" style="color:#9af0cf">412ms</span></div>
+                  <div class="glass-soft rounded-lg px-2.5 py-1.5 flex items-center gap-2" style="border-color:rgba(248,113,113,0.3)"><span style="color:var(--ink-faint)">14:22:03</span><span class="chip text-[9px]" style="background:rgba(248,113,113,0.16); color:#fca5a5; border-color:rgba(248,113,113,0.3)">error</span><span class="truncate" style="color:#fca5a5">travel_ai ✗</span></div>
+                  <div class="glass-soft rounded-lg px-2.5 py-1.5 flex items-center gap-2"><span style="color:var(--ink-faint)">14:22:04</span><span class="chip text-[9px]" style="background:rgba(167,139,250,0.16); color:#d8c9ff; border-color:rgba(167,139,250,0.3)">llm_response</span><span class="ml-auto" style="color:#9af0cf">980ms</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span class="text-xs" style="color:var(--ink-faint)">Swipe-up · actions · tier · spend · feed</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="relative z-10 max-w-[1340px] mx-auto px-6 pb-12 text-center">
+    <p class="text-xs" style="color:var(--ink-faint)">Jarvis — Ambient Assistant · voice-first, observability-first · BYOK · Mac + iOS · mockup 5 of a series</p>
+  </footer>
+</body>
+</html>

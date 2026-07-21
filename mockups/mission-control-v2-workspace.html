@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis · Mission Control — v2 · Mode Workspace</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          base: '#0a0e14',
+          panel: '#0f131b',
+          panel2: '#111827',
+          hair: '#1e2430',
+          accent: '#38bdf8',
+          emerald: '#34d399',
+          amber: '#fbbf24',
+          red: '#f87171',
+          violet: '#a78bfa',
+          ink: '#e5edf5',
+          mute: '#8a97a8',
+          faint: '#5a6678',
+        },
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { background: #06080c; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #1e2430; border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(56,189,248,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,0.035) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .glow-accent { box-shadow: 0 0 0 1px rgba(56,189,248,0.25), 0 0 24px -6px rgba(56,189,248,0.45); }
+  .pulse-dot { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .35; transform: scale(.82);} }
+  .listen-ring { animation: ring 1.8s ease-out infinite; }
+  @keyframes ring { 0% { transform: scale(.85); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
+  .wave span { display:inline-block; width:2px; margin:0 1px; background:#38bdf8; border-radius:2px; animation: wave 1.1s ease-in-out infinite; }
+  @keyframes wave { 0%,100%{ height:4px; } 50%{ height:16px; } }
+  .wave span:nth-child(1){animation-delay:0s} .wave span:nth-child(2){animation-delay:.12s}
+  .wave span:nth-child(3){animation-delay:.24s} .wave span:nth-child(4){animation-delay:.36s}
+  .wave span:nth-child(5){animation-delay:.48s} .wave span:nth-child(6){animation-delay:.6s}
+  .wave span:nth-child(7){animation-delay:.72s}
+  .fade-in { animation: fade .5s ease both; }
+  @keyframes fade { from { opacity:0; transform: translateY(6px);} to { opacity:1; transform:none;} }
+  .console-collapsed { height: 38px !important; }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  .ios-wave span { display:inline-block; width:2px; margin:0 1px; background:#38bdf8; border-radius:2px; animation: wave 1.1s ease-in-out infinite; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<!-- ============ HEADER BAND ============ -->
+<header class="max-w-[1700px] mx-auto px-6 pt-8 pb-5">
+  <div class="flex flex-wrap items-end justify-between gap-5">
+    <div class="flex items-center gap-4">
+      <div class="relative h-12 w-12 rounded-xl bg-panel border border-hair grid place-items-center glow-accent">
+        <svg viewBox="0 0 24 24" class="h-6 w-6 text-accent" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl font-700 tracking-tight">Jarvis <span class="text-mute font-500">Mission Control</span></h1>
+          <span class="font-mono text-[11px] px-2 py-0.5 rounded-md bg-accent/10 text-accent border border-accent/30">v2 · Mode Workspace</span>
+        </div>
+        <p class="text-sm text-mute mt-1">Voice-first personal AI cockpit · the <span class="text-ink">main canvas reshapes to the active mode</span> — Chat shown, Build &amp; Monitor ghosted.</p>
+      </div>
+    </div>
+    <!-- Numbered legend -->
+    <div class="font-mono text-[10.5px] text-faint grid grid-cols-3 gap-x-5 gap-y-1 leading-relaxed">
+      <span><span class="text-accent">1</span> Purpose rail</span>
+      <span><span class="text-accent">2</span> Mode toggle</span>
+      <span><span class="text-accent">3</span> Model picker</span>
+      <span><span class="text-accent">4</span> Console feed</span>
+      <span><span class="text-accent">5</span> Today / state</span>
+      <span><span class="text-accent">6</span> Reco + memory-write</span>
+      <span><span class="text-accent">7</span> "What I know"</span>
+      <span><span class="text-accent">8</span> Spend / limits</span>
+      <span><span class="text-accent">9</span> Voice</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ DESKTOP VIEW ============ -->
+<section class="max-w-[1700px] mx-auto px-6 pb-10">
+  <div class="flex items-center gap-2 mb-3 text-mute">
+    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>
+    <span class="text-xs font-600 uppercase tracking-[0.18em]">Desktop · macOS · ~1280px</span>
+  </div>
+
+  <!-- macOS window chrome -->
+  <div class="rounded-2xl overflow-hidden border border-hair shadow-2xl shadow-black/60 bg-base">
+    <!-- titlebar -->
+    <div class="h-9 bg-[#0c1016] border-b border-hair flex items-center px-4 gap-2">
+      <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+      <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+      <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+      <div class="flex-1 text-center font-mono text-[11px] text-faint">jarvis · ~/Purposes/baby — mission-control</div>
+      <div class="font-mono text-[10px] text-faint">⌘K</div>
+    </div>
+
+    <!-- app body -->
+    <div class="grid grid-bg" style="grid-template-columns: 64px 1fr; height: 760px;">
+
+      <!-- ===== (1) PURPOSE RAIL ===== -->
+      <aside class="bg-[#0b0f16] border-r border-hair flex flex-col items-center py-3 gap-1">
+        <div class="text-[9px] font-mono text-faint mb-1">⌘1–5</div>
+
+        <!-- Projects -->
+        <button class="group relative w-12 h-12 rounded-xl grid place-items-center hover:bg-panel transition" title="Projects · actions · reversible">
+          <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-emerald"></span>
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-mute group-hover:text-ink" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </button>
+        <!-- Finance -->
+        <button class="group relative w-12 h-12 rounded-xl grid place-items-center hover:bg-panel transition" title="Finance · read-only · no money">
+          <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-emerald"></span>
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-mute group-hover:text-ink" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </button>
+        <!-- Baby ACTIVE -->
+        <button class="group relative w-12 h-12 rounded-xl grid place-items-center bg-accent/15 ring-1 ring-accent/50 glow-accent" title="Baby · private · on-device (ACTIVE)">
+          <span class="absolute -left-1 top-1/2 -translate-y-1/2 h-7 w-1 rounded-full bg-accent"></span>
+          <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-emerald pulse-dot"></span>
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-accent" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="9" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/><circle cx="10" cy="9" r=".6" fill="currentColor"/><circle cx="14" cy="9" r=".6" fill="currentColor"/></svg>
+        </button>
+        <!-- Relationships -->
+        <button class="group relative w-12 h-12 rounded-xl grid place-items-center hover:bg-panel transition" title="Relationships · private · on-device">
+          <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-violet"></span>
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-mute group-hover:text-ink" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+        </button>
+        <!-- Home -->
+        <button class="group relative w-12 h-12 rounded-xl grid place-items-center hover:bg-panel transition" title="Home · actions · reversible">
+          <span class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-amber"></span>
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-mute group-hover:text-ink" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>
+        </button>
+
+        <div class="mt-auto flex flex-col items-center gap-2">
+          <button class="w-9 h-9 rounded-lg grid place-items-center hover:bg-panel" title="Add purpose folder">
+            <svg viewBox="0 0 24 24" class="h-4 w-4 text-faint" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button class="w-9 h-9 rounded-lg grid place-items-center hover:bg-panel" title="Settings">
+            <svg viewBox="0 0 24 24" class="h-4 w-4 text-faint" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.3 1 2-3.4L19 13a7 7 0 0 0 .1-1z"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- ===== RIGHT: topbar + canvas + console ===== -->
+      <div class="flex flex-col min-w-0">
+
+        <!-- ====== TOP BAR ====== -->
+        <div class="h-[58px] shrink-0 bg-[#0c1016]/90 backdrop-blur border-b border-hair flex items-center gap-3 px-4">
+          <!-- active purpose + risk badge -->
+          <div class="flex items-center gap-2.5">
+            <span class="h-2 w-2 rounded-full bg-emerald pulse-dot"></span>
+            <div class="leading-tight">
+              <div class="flex items-center gap-2">
+                <span class="font-600 text-[15px]">Baby</span>
+                <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-violet/15 text-violet border border-violet/30">private · on-device</span>
+              </div>
+              <div class="font-mono text-[10px] text-faint">~/Purposes/baby · manifest.risk = on-device</div>
+            </div>
+          </div>
+
+          <div class="h-7 w-px bg-hair mx-1"></div>
+
+          <!-- (2) MODE TOGGLE -->
+          <div class="flex items-center bg-panel rounded-lg p-0.5 border border-hair">
+            <button data-mode="build" class="mode-tab px-3 py-1.5 rounded-md text-[13px] font-500 text-faint hover:text-mute flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 7l3 3-9 9-3 .5.5-3z"/><path d="M16 5l3 3"/></svg>Build
+            </button>
+            <button data-mode="monitor" class="mode-tab px-3 py-1.5 rounded-md text-[13px] font-500 text-faint hover:text-mute flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l2 6 4-12 2 6h6"/></svg>Monitor
+            </button>
+            <button data-mode="chat" class="mode-tab px-3 py-1.5 rounded-md text-[13px] font-600 bg-accent/15 text-accent ring-1 ring-accent/40 flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
+            </button>
+          </div>
+
+          <div class="ml-auto flex items-center gap-3">
+            <!-- (9) VOICE listening -->
+            <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-panel border border-hair">
+              <span class="relative grid place-items-center h-4 w-4">
+                <span class="absolute inset-0 rounded-full bg-accent/40 listen-ring"></span>
+                <span class="h-2 w-2 rounded-full bg-accent"></span>
+              </span>
+              <span class="text-[12px] text-accent font-500">listening</span>
+              <span class="wave flex items-end h-4"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+            </div>
+
+            <!-- (3) MODEL PICKER -->
+            <div class="relative">
+              <button id="modelBtn" onclick="toggleModel()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-hair hover:border-accent/40 transition">
+                <span class="h-5 w-5 rounded grid place-items-center bg-violet/15 text-violet text-[10px] font-700">L</span>
+                <div class="leading-tight text-left">
+                  <div class="font-mono text-[11px] text-ink flex items-center gap-1">Local (Ollama) <span class="text-violet">●</span></div>
+                  <div class="font-mono text-[9px] text-faint">on-device · $0 · tools ~</div>
+                </div>
+                <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 text-faint" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+
+              <!-- dropdown -->
+              <div id="modelMenu" class="hidden absolute right-0 mt-2 w-[360px] z-40 rounded-xl bg-panel2 border border-hair shadow-2xl shadow-black/70 overflow-hidden">
+                <div class="px-3 py-2.5 border-b border-hair flex items-center justify-between">
+                  <span class="text-[11px] font-600 text-mute uppercase tracking-wider">Model · all providers</span>
+                  <span class="font-mono text-[9px] text-violet bg-violet/10 px-1.5 py-0.5 rounded border border-violet/25">privacy-locked → local only</span>
+                </div>
+                <!-- tier presets -->
+                <div class="px-3 py-2 flex gap-1.5 border-b border-hair">
+                  <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-base text-mute border border-hair">tier:</span>
+                  <button class="font-mono text-[10px] px-2 py-0.5 rounded bg-base text-faint border border-hair hover:text-ink">⚡ fast</button>
+                  <button class="font-mono text-[10px] px-2 py-0.5 rounded bg-accent/15 text-accent border border-accent/30">⚖ balanced</button>
+                  <button class="font-mono text-[10px] px-2 py-0.5 rounded bg-base text-faint border border-hair hover:text-ink">★ max</button>
+                </div>
+                <div class="max-h-[340px] overflow-y-auto py-1">
+                  <!-- LOCAL selected -->
+                  <div class="mx-1.5 my-1 px-2.5 py-2 rounded-lg bg-violet/10 ring-1 ring-violet/40 flex items-center gap-2.5">
+                    <span class="h-6 w-6 rounded grid place-items-center bg-violet/20 text-violet text-[10px] font-700">L</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-[12.5px] font-600 flex items-center gap-1.5">Local (Ollama) <span class="font-mono text-[9px] px-1 rounded bg-violet/20 text-violet">on-device</span></div>
+                      <div class="font-mono text-[10px] text-faint">llama3.1:8b · local · tools ~ emulated</div>
+                    </div>
+                    <span class="font-mono text-[10px] text-violet">free</span>
+                    <svg viewBox="0 0 24 24" class="h-4 w-4 text-violet" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+                  </div>
+                  <!-- others (dimmed for this private purpose) -->
+                  <div class="px-3 pt-1 pb-1 font-mono text-[9px] text-faint">↓ disabled for private purpose</div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5 hover:bg-base/60">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#d97757]/20 text-[#d97757] text-[10px] font-700">A</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">Claude</div><div class="font-mono text-[10px] text-faint">Anthropic · claude-opus-4 · tools ✓ native</div></div>
+                      <span class="font-mono text-[10px] text-amber">$$$</span>
+                    </div>
+                  </div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#4285f4]/20 text-[#7bacff] text-[10px] font-700">G</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">Gemini</div><div class="font-mono text-[10px] text-faint">Google · gemini-2.5-pro · tools ✓ native</div></div>
+                      <span class="font-mono text-[10px] text-amber">$$</span>
+                    </div>
+                  </div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#10a37f]/20 text-[#34d399] text-[10px] font-700">O</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">GPT</div><div class="font-mono text-[10px] text-faint">OpenAI · gpt-4.1 · tools ✓ native</div></div>
+                      <span class="font-mono text-[10px] text-amber">$$$</span>
+                    </div>
+                  </div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#0668e1]/20 text-[#7bacff] text-[10px] font-700">M</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">Llama</div><div class="font-mono text-[10px] text-faint">Meta · llama-4-maverick · tools ~ emulated</div></div>
+                      <span class="font-mono text-[10px] text-emerald">$</span>
+                    </div>
+                  </div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#6b4eff]/20 text-violet text-[10px] font-700">K</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">Kimi K2.6</div><div class="font-mono text-[10px] text-faint">Moonshot · kimi-k2.6 · tools ~ emulated</div></div>
+                      <span class="font-mono text-[10px] text-emerald">$</span>
+                    </div>
+                  </div>
+                  <div class="model-row opacity-45 grayscale">
+                    <div class="mx-1.5 px-2.5 py-2 rounded-lg flex items-center gap-2.5">
+                      <span class="h-6 w-6 rounded grid place-items-center bg-[#536dfe]/20 text-[#9fb0ff] text-[10px] font-700">D</span>
+                      <div class="flex-1 min-w-0"><div class="text-[12.5px] font-600">DeepSeek</div><div class="font-mono text-[10px] text-faint">DeepSeek · deepseek-v3 · tools ✗ unreliable</div></div>
+                      <span class="font-mono text-[10px] text-emerald">free</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- (8) SPEND -->
+            <div class="px-3 py-1.5 rounded-lg bg-panel border border-hair leading-tight">
+              <div class="font-mono text-[11px]"><span class="text-emerald">$2.14</span><span class="text-faint">/$10.00</span></div>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <div class="h-1 w-16 rounded-full bg-base overflow-hidden"><div class="h-full bg-emerald" style="width:21.4%"></div></div>
+                <span class="font-mono text-[9px] text-faint">BYOK today</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ====== MAIN CANVAS (3-col) + CONSOLE ====== -->
+        <div class="flex-1 min-h-0 flex flex-col">
+          <div class="flex-1 min-h-0 grid" style="grid-template-columns: 1fr 320px;">
+
+            <!-- == CONVERSATION THREAD (HERO) == -->
+            <div class="min-w-0 flex flex-col border-r border-hair">
+              <!-- thread header / recent strip -->
+              <div class="px-5 pt-3 pb-2 border-b border-hair flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-[10px] text-faint">RECENT ACROSS PURPOSES</span>
+                <span class="font-mono text-[10px] px-2 py-0.5 rounded-full bg-panel border border-hair text-mute">💻 projects · status</span>
+                <span class="font-mono text-[10px] px-2 py-0.5 rounded-full bg-panel border border-hair text-mute">💝 anniversary · gift</span>
+                <span class="font-mono text-[10px] px-2 py-0.5 rounded-full bg-panel border border-hair text-mute">💵 finance · insight</span>
+                <span class="ml-auto font-mono text-[10px] px-2 py-0.5 rounded-full bg-accent/10 border border-accent/30 text-accent">● Baby · Chat</span>
+              </div>
+
+              <!-- scrollable thread -->
+              <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4">
+
+                <!-- USER utterance -->
+                <div class="flex justify-end fade-in">
+                  <div class="max-w-[78%]">
+                    <div class="flex items-center justify-end gap-2 mb-1">
+                      <span class="font-mono text-[10px] text-faint">10:42:07 · voice</span>
+                      <span class="text-[11px] text-mute font-500">You</span>
+                    </div>
+                    <div class="rounded-2xl rounded-tr-sm bg-accent/12 border border-accent/25 px-4 py-2.5 text-[14px] leading-relaxed text-ink">
+                      Going to Hawaii — what should I buy for the baby?
+                    </div>
+                  </div>
+                </div>
+
+                <!-- JARVIS response -->
+                <div class="flex justify-start fade-in">
+                  <div class="max-w-[88%] w-full">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <span class="h-5 w-5 rounded grid place-items-center bg-violet/15 text-violet text-[9px] font-700">J</span>
+                      <span class="text-[11px] text-mute font-500">Jarvis</span>
+                      <span class="font-mono text-[9px] px-1.5 py-0.5 rounded bg-violet/10 text-violet border border-violet/25">used memory (baby 15mo) + web search</span>
+                      <span class="font-mono text-[9px] text-faint">via llama3.1:8b · on-device</span>
+                    </div>
+
+                    <div class="rounded-2xl rounded-tl-sm bg-panel border border-hair px-4 py-3.5 space-y-3.5">
+                      <p class="text-[14px] leading-relaxed text-ink">
+                        For a <span class="text-accent font-500">15-month-old boy</span> heading to Hawaii — and noting his <span class="text-amber">mild cough (3 days)</span> — here's what I'd pack. Personal purposes don't buy anything; these are recommendations with sources.
+                      </p>
+
+                      <!-- (6) RECOMMENDATION CARDS with sources -->
+                      <div class="grid grid-cols-2 gap-2.5">
+                        <!-- card 1 -->
+                        <div class="rounded-xl bg-base border border-hair p-3 hover:border-accent/30 transition">
+                          <div class="flex items-start gap-2">
+                            <span class="text-lg">🧴</span>
+                            <div class="min-w-0">
+                              <div class="text-[13px] font-600 text-ink">Reef-safe baby sunscreen</div>
+                              <div class="text-[11.5px] text-mute leading-snug mt-0.5">Mineral SPF 50, rated 15mo+. Hawaii bans oxybenzone reefs.</div>
+                            </div>
+                          </div>
+                          <div class="mt-2 flex items-center gap-1.5 font-mono text-[9px] text-faint">
+                            <svg viewBox="0 0 24 24" class="h-3 w-3 text-accent" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                            why: AAP sun-safety · HI reef law
+                          </div>
+                        </div>
+                        <!-- card 2 -->
+                        <div class="rounded-xl bg-base border border-hair p-3 hover:border-accent/30 transition">
+                          <div class="flex items-start gap-2">
+                            <span class="text-lg">👕</span>
+                            <div class="min-w-0">
+                              <div class="text-[13px] font-600 text-ink">UPF rash guard + sun hat</div>
+                              <div class="text-[11.5px] text-mute leading-snug mt-0.5">UPF 50 long-sleeve + wide-brim hat. Less sunscreen needed.</div>
+                            </div>
+                          </div>
+                          <div class="mt-2 flex items-center gap-1.5 font-mono text-[9px] text-faint">
+                            <svg viewBox="0 0 24 24" class="h-3 w-3 text-accent" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                            why: skin-cancer.org infants
+                          </div>
+                        </div>
+                        <!-- card 3 -->
+                        <div class="rounded-xl bg-base border border-amber/30 p-3">
+                          <div class="flex items-start gap-2">
+                            <span class="text-lg">💊</span>
+                            <div class="min-w-0">
+                              <div class="text-[13px] font-600 text-ink flex items-center gap-1.5">Infant Tylenol <span class="font-mono text-[8.5px] px-1 rounded bg-amber/15 text-amber border border-amber/30">cough flag</span></div>
+                              <div class="text-[11.5px] text-mute leading-snug mt-0.5">Given the recent mild cough — for comfort/fever on the trip.</div>
+                            </div>
+                          </div>
+                          <div class="mt-2 flex items-center gap-1.5 font-mono text-[9px] text-faint">
+                            <svg viewBox="0 0 24 24" class="h-3 w-3 text-accent" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                            why: memory(cough 3d) · dose by weight
+                          </div>
+                        </div>
+                        <!-- card 4 -->
+                        <div class="rounded-xl bg-base border border-hair p-3 hover:border-accent/30 transition">
+                          <div class="flex items-start gap-2">
+                            <span class="text-lg">🔊</span>
+                            <div class="min-w-0">
+                              <div class="text-[13px] font-600 text-ink">Travel sound machine</div>
+                              <div class="text-[11.5px] text-mute leading-snug mt-0.5">Portable white-noise for sleep in an unfamiliar room.</div>
+                            </div>
+                          </div>
+                          <div class="mt-2 flex items-center gap-1.5 font-mono text-[9px] text-faint">
+                            <svg viewBox="0 0 24 24" class="h-3 w-3 text-accent" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                            why: sleep-routine continuity
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- proposed memory-write inline -->
+                      <div class="rounded-xl bg-violet/8 border border-violet/30 p-3">
+                        <div class="flex items-center gap-2 mb-2">
+                          <svg viewBox="0 0 24 24" class="h-4 w-4 text-violet" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2a7 7 0 0 0-7 7c0 2 1 3.5 2 4.5V17h10v-3.5c1-1 2-2.5 2-4.5a7 7 0 0 0-7-7z"/><path d="M9 21h6M10 17v4M14 17v4"/></svg>
+                          <span class="text-[12px] font-600 text-violet">Proposed memory-write</span>
+                          <span class="font-mono text-[9px] text-faint ml-auto">scoped → baby graph</span>
+                        </div>
+                        <div class="font-mono text-[12px] text-ink bg-base/60 rounded-lg px-3 py-2 border border-violet/20">
+                          <span class="text-violet">baby.trip</span> = <span class="text-accent">"Hawaii"</span> <span class="text-faint">· when:</span> <span class="text-accent">next month</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-2.5">
+                          <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet/20 text-violet border border-violet/40 text-[12px] font-600 hover:bg-violet/30">
+                            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>Confirm
+                          </button>
+                          <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-base text-mute border border-hair text-[12px] font-500 hover:text-ink">
+                            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6L6 18M6 6l12 12"/></svg>Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ghost mode hint + composer -->
+              <div class="border-t border-hair px-5 py-3 bg-[#0c1016]/60">
+                <div class="flex items-center gap-2 mb-2.5">
+                  <span class="font-mono text-[9px] text-faint">canvas adapts →</span>
+                  <span class="font-mono text-[9px] px-2 py-0.5 rounded bg-panel border border-hair text-faint">Build = action queue</span>
+                  <span class="font-mono text-[9px] px-2 py-0.5 rounded bg-panel border border-hair text-faint">Monitor = status grid</span>
+                  <span class="font-mono text-[9px] px-2 py-0.5 rounded bg-accent/10 border border-accent/30 text-accent">Chat = this thread ✓</span>
+                </div>
+                <div class="flex items-center gap-2 bg-panel border border-hair rounded-xl px-3 py-2">
+                  <!-- (9) push-to-talk -->
+                  <button class="relative grid place-items-center h-9 w-9 rounded-lg bg-accent/15 ring-1 ring-accent/40 shrink-0" title="Push to talk">
+                    <span class="absolute inset-0 rounded-lg bg-accent/20 listen-ring"></span>
+                    <svg viewBox="0 0 24 24" class="h-4.5 w-4.5 text-accent" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                  </button>
+                  <input type="text" placeholder="Speak or type to Baby…  ⌘1–5 to switch purpose" class="flex-1 bg-transparent outline-none text-[13px] text-ink placeholder:text-faint" />
+                  <span class="wave flex items-end h-4 px-1"><span></span><span></span><span></span><span></span><span></span></span>
+                  <button class="grid place-items-center h-8 w-8 rounded-lg bg-accent text-base shrink-0"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- == (7) "WHAT I KNOW" MEMORY PANEL + (5) TODAY == -->
+            <aside class="min-w-0 overflow-y-auto bg-[#0b0f16] flex flex-col">
+              <!-- (5) TODAY / STATE -->
+              <div class="p-4 border-b border-hair">
+                <div class="flex items-center gap-2 mb-3">
+                  <svg viewBox="0 0 24 24" class="h-4 w-4 text-accent" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>
+                  <span class="text-[12px] font-600 uppercase tracking-wider text-mute">Today</span>
+                </div>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between rounded-lg bg-panel border border-hair px-3 py-2">
+                    <span class="text-[12px] text-mute flex items-center gap-1.5">🍼 Last feed</span>
+                    <span class="font-mono text-[11px] text-ink">9:15a · 6oz</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg bg-panel border border-hair px-3 py-2">
+                    <span class="text-[12px] text-mute flex items-center gap-1.5">😴 Sleep</span>
+                    <span class="font-mono text-[11px] text-ink">11h 20m</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg bg-panel border border-amber/30 px-3 py-2">
+                    <span class="text-[12px] text-amber flex items-center gap-1.5">🤧 Mild cough</span>
+                    <span class="font-mono text-[11px] text-amber">flag · day 3</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-lg bg-panel border border-accent/30 px-3 py-2">
+                    <span class="text-[12px] text-accent flex items-center gap-1.5">🌺 Upcoming</span>
+                    <span class="font-mono text-[11px] text-accent">Hawaii trip</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- (7) WHAT I KNOW -->
+              <div class="p-4">
+                <div class="flex items-center gap-2 mb-3">
+                  <svg viewBox="0 0 24 24" class="h-4 w-4 text-violet" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  <span class="text-[12px] font-600 uppercase tracking-wider text-mute">What I know</span>
+                  <span class="font-mono text-[9px] text-violet ml-auto px-1.5 py-0.5 rounded bg-violet/10 border border-violet/25">baby graph</span>
+                </div>
+
+                <div class="space-y-2">
+                  <!-- fact card: age -->
+                  <div class="rounded-lg bg-panel border border-hair p-2.5">
+                    <div class="font-mono text-[9px] text-faint uppercase tracking-wide mb-0.5">age</div>
+                    <div class="font-mono text-[13px] text-ink">15 months</div>
+                  </div>
+                  <!-- sex -->
+                  <div class="rounded-lg bg-panel border border-hair p-2.5">
+                    <div class="font-mono text-[9px] text-faint uppercase tracking-wide mb-0.5">sex</div>
+                    <div class="font-mono text-[13px] text-ink">male</div>
+                  </div>
+                  <!-- recent symptom -->
+                  <div class="rounded-lg bg-panel border border-amber/30 p-2.5">
+                    <div class="font-mono text-[9px] text-amber/80 uppercase tracking-wide mb-0.5">recent symptom</div>
+                    <div class="font-mono text-[13px] text-ink">mild cough <span class="text-amber">(3 days ago)</span></div>
+                  </div>
+                  <!-- sunscreen -->
+                  <div class="rounded-lg bg-panel border border-hair p-2.5">
+                    <div class="font-mono text-[9px] text-faint uppercase tracking-wide mb-0.5">sunscreen</div>
+                    <div class="font-mono text-[13px] text-ink">none yet</div>
+                  </div>
+                </div>
+
+                <div class="mt-3 flex items-center gap-1.5 font-mono text-[9px] text-faint">
+                  <svg viewBox="0 0 24 24" class="h-3 w-3 text-violet" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>
+                  4 facts · on-device · never leaves Mac
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <!-- ====== (4) BOTTOM CONSOLE DRAWER ====== -->
+          <div id="console" class="shrink-0 border-t border-hair bg-[#080b10] transition-all duration-200" style="height: 224px;">
+            <!-- console tab bar -->
+            <div class="h-[38px] flex items-center px-3 gap-2 border-b border-hair bg-[#0c1016]">
+              <button onclick="toggleConsole()" class="flex items-center gap-1.5 text-[12px] font-600 text-ink">
+                <svg id="consoleChevron" viewBox="0 0 24 24" class="h-3.5 w-3.5 text-mute transition-transform" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="font-mono text-[11px] tracking-wide">OBSERVABILITY</span>
+              </button>
+              <span class="font-mono text-[10px] text-faint">·</span>
+              <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-accent/10 text-accent border border-accent/25">all purposes</span>
+              <div class="ml-auto flex items-center gap-3 font-mono text-[10px] text-faint">
+                <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-accent"></span> llm</span>
+                <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-emerald"></span> tool</span>
+                <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-violet"></span> memory</span>
+                <span class="flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full bg-red"></span> error</span>
+                <!-- (8) rate limit note -->
+                <span class="px-2 py-0.5 rounded bg-panel border border-hair text-emerald">DeepSeek free: 142/200</span>
+                <span class="px-2 py-0.5 rounded bg-panel border border-violet/25 text-violet">local · $0</span>
+              </div>
+            </div>
+
+            <!-- log stream -->
+            <div id="consoleBody" class="overflow-y-auto px-3 py-2 font-mono text-[11px] leading-[1.85]" style="height: calc(100% - 38px);">
+              <!-- BABY thread events -->
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:07.1</span><span class="text-accent w-28 shrink-0">utterance</span><span class="text-mute">baby · "Going to Hawaii — what should I buy for the baby?"</span><span class="ml-auto text-faint">+0ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:07.4</span><span class="text-accent w-28 shrink-0">stt_result</span><span class="text-mute">whisper-local · conf 0.97 · 11 tokens</span><span class="ml-auto text-faint">312ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:07.6</span><span class="text-emerald w-28 shrink-0">memory_read</span><span class="text-mute">baby.{age,sex,recent_symptom,sunscreen} → 4 facts</span><span class="ml-auto text-faint">18ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:07.7</span><span class="text-accent w-28 shrink-0">llm_request</span><span class="text-mute">model=<span class="text-violet">llama3.1:8b</span> · on-device · ctx=baby · tools~</span><span class="ml-auto text-faint">+0ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:08.0</span><span class="text-emerald w-28 shrink-0">tool_call</span><span class="text-mute">web_search("reef-safe baby sunscreen 15mo Hawaii")</span><span class="ml-auto text-faint">+0ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:08.9</span><span class="text-emerald w-28 shrink-0">tool_result</span><span class="text-mute">4 sources · AAP · skin-cancer.org · HI reef law</span><span class="ml-auto text-faint">893ms</span></div>
+              <div class="flex gap-3"><span class="text-faint w-20 shrink-0">10:42:10.2</span><span class="text-accent w-28 shrink-0">llm_response</span><span class="text-mute"><span class="text-violet">llama3.1:8b</span> · 4 reco cards · 1 proposed write</span><span class="ml-auto text-faint">1310ms</span></div>
+
+              <!-- CONFIRMABLE memory write -->
+              <div class="flex gap-3 items-center rounded-md bg-violet/8 border border-violet/25 px-2 -mx-1 my-1 py-1">
+                <span class="text-faint w-20 shrink-0">10:42:10.3</span>
+                <span class="text-violet w-28 shrink-0">memory_write</span>
+                <span class="text-ink">baby.recent_symptom = <span class="text-amber">mild cough (3d)</span> — keep?</span>
+                <span class="ml-auto flex items-center gap-1.5">
+                  <button class="px-2 py-0.5 rounded bg-violet/20 text-violet border border-violet/40 text-[10px] font-600 hover:bg-violet/30">Confirm</button>
+                  <button class="px-2 py-0.5 rounded bg-panel text-faint border border-hair text-[10px] hover:text-ink">Reject</button>
+                </span>
+              </div>
+              <div class="flex gap-3 items-center rounded-md bg-violet/8 border border-violet/25 px-2 -mx-1 my-1 py-1">
+                <span class="text-faint w-20 shrink-0">10:42:10.4</span>
+                <span class="text-violet w-28 shrink-0">memory_write</span>
+                <span class="text-ink">baby.trip = <span class="text-accent">Hawaii (next month)</span> — keep?</span>
+                <span class="ml-auto flex items-center gap-1.5">
+                  <button class="px-2 py-0.5 rounded bg-violet/20 text-violet border border-violet/40 text-[10px] font-600 hover:bg-violet/30">Confirm</button>
+                  <button class="px-2 py-0.5 rounded bg-panel text-faint border border-hair text-[10px] hover:text-ink">Reject</button>
+                </span>
+              </div>
+
+              <!-- CODING history (other purpose) -->
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">09:18:02.0</span><span class="text-accent w-28 shrink-0">utterance</span><span class="text-mute">projects · "What's the state of my projects?"</span><span class="ml-auto text-faint">+0ms</span></div>
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">09:18:03.1</span><span class="text-accent w-28 shrink-0">llm_response</span><span class="text-mute"><span class="text-[#d97757]">claude-opus-4</span> · 6/7 clean · parentlogs 2 PRs + uncommitted migration · travel_ai Netlify deploy failed 3h ago</span><span class="ml-auto text-faint">2104ms</span></div>
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">09:18:05.0</span><span class="text-emerald w-28 shrink-0">tool_call</span><span class="text-mute">file_bug{hoa-community-platform · bug · high · "Stripe webhook not idempotent"}</span><span class="ml-auto text-faint">+0ms</span></div>
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">09:18:05.2</span><span class="text-emerald w-28 shrink-0">tool_result</span><span class="text-mute">issue #418 created · reversible · actions=on</span><span class="ml-auto text-faint">240ms</span></div>
+              <div class="flex gap-3 opacity-80"><span class="text-red w-20 shrink-0">06:30:11.0</span><span class="text-red w-28 shrink-0">error</span><span class="text-mute">travel_ai · netlify_deploy · exit 1 · build failed (3h ago)</span><span class="ml-auto text-faint">—</span></div>
+
+              <!-- ANNIVERSARY (relationships) -->
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">08:05:44.0</span><span class="text-violet w-28 shrink-0">memory_read</span><span class="text-mute">relationships.wife.{likes,dislikes} → handmade ceramics ✓ · gold ✗</span><span class="ml-auto text-faint">12ms</span></div>
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">08:05:45.3</span><span class="text-accent w-28 shrink-0">llm_response</span><span class="text-mute"><span class="text-violet">llama3.1:8b</span> · reco: handmade ceramic vase / pottery weekend</span><span class="ml-auto text-faint">980ms</span></div>
+
+              <!-- FINANCE (read-only) -->
+              <div class="flex gap-3 opacity-80"><span class="text-faint w-20 shrink-0">07:40:02.0</span><span class="text-emerald w-28 shrink-0">reconcile</span><span class="text-mute">finance · read-only · spending +18% vs last month · 3 new recurring charges · <span class="text-faint">no money moved</span></span><span class="ml-auto text-faint">540ms</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ iOS VIEW ============ -->
+<section class="max-w-[1700px] mx-auto px-6 pb-20">
+  <div class="flex items-center gap-2 mb-3 text-mute">
+    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+    <span class="text-xs font-600 uppercase tracking-[0.18em]">iOS · iPhone · thin client over tunnel · ~390px</span>
+  </div>
+
+  <div class="flex flex-wrap gap-8 items-start">
+    <!-- PHONE FRAME -->
+    <div class="relative" style="width:390px;">
+      <div class="relative rounded-[55px] border-[10px] border-[#1a1f29] bg-base shadow-2xl shadow-black/70 overflow-hidden" style="height:844px;">
+        <!-- dynamic island -->
+        <div class="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 h-8 w-28 rounded-full bg-black flex items-center justify-end px-3 gap-2">
+          <span class="h-1.5 w-1.5 rounded-full bg-[#1f2733]"></span>
+        </div>
+
+        <!-- iOS status bar -->
+        <div class="relative z-20 h-12 px-7 flex items-end justify-between pb-1 font-sans">
+          <span class="font-600 text-[14px] text-ink">10:42</span>
+          <div class="flex items-center gap-1.5 text-ink">
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M2 17h3v4H2zM7 13h3v8H7zM12 9h3v12h-3zM17 5h3v16h-3z"/></svg>
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0M12 20h0"/></svg>
+            <svg viewBox="0 0 26 14" class="h-3.5 w-5"><rect x="1" y="1" width="20" height="12" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5"/><rect x="3" y="3" width="15" height="8" rx="1.5" fill="#34d399"/><rect x="22" y="4.5" width="2" height="5" rx="1" fill="currentColor" fill-opacity=".5"/></svg>
+          </div>
+        </div>
+
+        <!-- top purpose chip + mode + model -->
+        <div class="px-4 pt-1 pb-2.5 border-b border-hair bg-[#0c1016]">
+          <div class="flex items-center gap-2">
+            <button class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 border border-accent/40">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald pulse-dot"></span>
+              <span class="text-[13px] font-600 text-ink">Baby</span>
+              <span class="font-mono text-[8.5px] px-1 py-0.5 rounded bg-violet/20 text-violet">private</span>
+              <svg viewBox="0 0 24 24" class="h-3 w-3 text-accent" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <span class="font-mono text-[9px] text-faint">⌘1–5</span>
+            <div class="ml-auto flex items-center gap-1.5">
+              <span class="relative grid place-items-center h-3.5 w-3.5">
+                <span class="absolute inset-0 rounded-full bg-accent/40 listen-ring"></span>
+                <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
+              </span>
+              <span class="text-[11px] text-accent font-500">listening</span>
+            </div>
+          </div>
+          <!-- mode toggle compact -->
+          <div class="flex items-center gap-1.5 mt-2">
+            <div class="flex items-center bg-panel rounded-lg p-0.5 border border-hair text-[11px] font-500">
+              <span class="px-2.5 py-1 rounded-md text-faint">Build</span>
+              <span class="px-2.5 py-1 rounded-md text-faint">Monitor</span>
+              <span class="px-2.5 py-1 rounded-md bg-accent/15 text-accent ring-1 ring-accent/40 font-600">Chat</span>
+            </div>
+            <div class="ml-auto flex items-center gap-1 px-2 py-1 rounded-lg bg-panel border border-hair">
+              <span class="h-4 w-4 rounded grid place-items-center bg-violet/15 text-violet text-[8px] font-700">L</span>
+              <span class="font-mono text-[9.5px] text-violet">local · $0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHAT canvas (scroll) -->
+        <div class="overflow-y-auto px-4 py-3 space-y-3" style="height: 510px;">
+          <!-- user -->
+          <div class="flex justify-end">
+            <div class="max-w-[82%]">
+              <div class="rounded-2xl rounded-tr-sm bg-accent/12 border border-accent/25 px-3 py-2 text-[13px] text-ink leading-relaxed">Going to Hawaii — what should I buy for the baby?</div>
+              <div class="text-right font-mono text-[8.5px] text-faint mt-0.5">10:42 · voice</div>
+            </div>
+          </div>
+          <!-- jarvis -->
+          <div>
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="h-4 w-4 rounded grid place-items-center bg-violet/15 text-violet text-[8px] font-700">J</span>
+              <span class="font-mono text-[8.5px] text-violet bg-violet/10 px-1.5 py-0.5 rounded border border-violet/25">memory(baby 15mo) + web search</span>
+            </div>
+            <div class="rounded-2xl rounded-tl-sm bg-panel border border-hair px-3 py-3 space-y-2.5">
+              <p class="text-[12.5px] leading-relaxed text-ink">For your <span class="text-accent font-500">15-mo boy</span> + <span class="text-amber">mild cough (3d)</span> — recommendations, no purchases:</p>
+              <!-- reco cards stacked -->
+              <div class="space-y-2">
+                <div class="rounded-lg bg-base border border-hair p-2.5 flex items-start gap-2">
+                  <span>🧴</span><div><div class="text-[12px] font-600">Reef-safe baby sunscreen</div><div class="font-mono text-[8.5px] text-faint mt-0.5">why: AAP · HI reef law</div></div>
+                </div>
+                <div class="rounded-lg bg-base border border-hair p-2.5 flex items-start gap-2">
+                  <span>👕</span><div><div class="text-[12px] font-600">UPF rash guard + sun hat</div><div class="font-mono text-[8.5px] text-faint mt-0.5">why: skin-cancer.org infants</div></div>
+                </div>
+                <div class="rounded-lg bg-base border border-amber/30 p-2.5 flex items-start gap-2">
+                  <span>💊</span><div><div class="text-[12px] font-600">Infant Tylenol <span class="font-mono text-[7.5px] px-1 rounded bg-amber/15 text-amber">cough</span></div><div class="font-mono text-[8.5px] text-faint mt-0.5">why: memory(cough 3d)</div></div>
+                </div>
+                <div class="rounded-lg bg-base border border-hair p-2.5 flex items-start gap-2">
+                  <span>🔊</span><div><div class="text-[12px] font-600">Travel sound machine</div><div class="font-mono text-[8.5px] text-faint mt-0.5">why: sleep-routine continuity</div></div>
+                </div>
+              </div>
+              <!-- proposed memory write -->
+              <div class="rounded-lg bg-violet/8 border border-violet/30 p-2.5">
+                <div class="font-mono text-[8.5px] text-violet mb-1.5">proposed memory-write · baby graph</div>
+                <div class="font-mono text-[11px] text-ink bg-base/60 rounded px-2 py-1.5 border border-violet/20"><span class="text-violet">baby.trip</span>=<span class="text-accent">"Hawaii"</span> · next month</div>
+                <div class="flex gap-2 mt-2">
+                  <button class="flex-1 py-1.5 rounded-lg bg-violet/20 text-violet border border-violet/40 text-[11px] font-600">Confirm</button>
+                  <button class="flex-1 py-1.5 rounded-lg bg-base text-mute border border-hair text-[11px]">Reject</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- swipe-up console handle -->
+        <div class="absolute bottom-0 left-0 right-0 bg-[#080b10] border-t border-hair">
+          <div class="flex flex-col items-center pt-1.5 pb-1">
+            <div class="h-1 w-10 rounded-full bg-hair mb-1.5"></div>
+            <div class="w-full px-4 flex items-center gap-2">
+              <span class="font-mono text-[9px] text-mute">▲ OBSERVABILITY</span>
+              <span class="font-mono text-[8px] px-1.5 py-0.5 rounded bg-violet/10 text-violet border border-violet/25">memory_write ×2</span>
+              <span class="font-mono text-[8px] text-emerald ml-auto">DeepSeek 142/200</span>
+            </div>
+          </div>
+          <!-- peeking feed -->
+          <div class="px-4 pb-2 font-mono text-[9px] leading-[1.7] text-faint">
+            <div class="truncate"><span class="text-violet">memory_write</span> baby.trip = Hawaii — keep?</div>
+            <div class="truncate"><span class="text-accent">llm_response</span> llama3.1:8b · 4 reco cards · 1310ms</div>
+          </div>
+          <!-- composer + push-to-talk -->
+          <div class="px-4 pb-3">
+            <div class="flex items-center gap-2 bg-panel border border-hair rounded-full pl-2 pr-1 py-1.5">
+              <button class="relative grid place-items-center h-9 w-9 rounded-full bg-accent/15 ring-1 ring-accent/40 shrink-0">
+                <span class="absolute inset-0 rounded-full bg-accent/20 listen-ring"></span>
+                <svg viewBox="0 0 24 24" class="h-4 w-4 text-accent" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              </button>
+              <span class="ios-wave flex items-end h-4"><span></span><span></span><span></span><span></span><span></span><span></span></span>
+              <span class="text-[11px] text-faint">Hold to talk to Baby</span>
+              <button class="ml-auto grid place-items-center h-8 w-8 rounded-full bg-accent text-base shrink-0"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+            </div>
+          </div>
+          <!-- home indicator -->
+          <div class="flex justify-center pb-1.5"><div class="h-1 w-32 rounded-full bg-ink/30"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- iOS annotations -->
+    <div class="flex-1 min-w-[280px] max-w-md space-y-3 pt-2">
+      <h3 class="text-sm font-600 text-mute uppercase tracking-wider">iOS — thin client over tunnel</h3>
+      <p class="text-sm text-mute leading-relaxed">Agent + data live on the Mac. The phone is a <span class="text-ink">thin client over a tunnel</span> — the Chat canvas full-screen, a <span class="text-accent">top purpose chip</span>, and a <span class="text-ink">swipe-up console</span> peeking the observability feed.</p>
+      <div class="space-y-2 font-mono text-[11px]">
+        <div class="flex items-center gap-2 rounded-lg bg-panel border border-hair px-3 py-2"><span class="text-accent">①</span><span class="text-mute">Top chip = active purpose + risk badge</span></div>
+        <div class="flex items-center gap-2 rounded-lg bg-panel border border-hair px-3 py-2"><span class="text-accent">②</span><span class="text-mute">Mode toggle compact · Chat active</span></div>
+        <div class="flex items-center gap-2 rounded-lg bg-panel border border-hair px-3 py-2"><span class="text-violet">③</span><span class="text-mute">Local model honors private badge · $0</span></div>
+        <div class="flex items-center gap-2 rounded-lg bg-panel border border-hair px-3 py-2"><span class="text-accent">④</span><span class="text-mute">Swipe-up = console feed (memory writes)</span></div>
+        <div class="flex items-center gap-2 rounded-lg bg-panel border border-hair px-3 py-2"><span class="text-accent">⑨</span><span class="text-mute">Hold-to-talk + live waveform</span></div>
+      </div>
+      <div class="rounded-xl bg-violet/8 border border-violet/30 p-3 mt-4">
+        <div class="font-mono text-[10px] text-violet mb-1">PRIVACY INVARIANT</div>
+        <p class="text-[12px] text-mute leading-relaxed">Baby + Relationships purposes are <span class="text-violet">on-device only</span> — model picker is locked to Local (Ollama), facts never leave the Mac, spend reads <span class="text-violet">$0</span>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="max-w-[1700px] mx-auto px-6 pb-10 text-center">
+  <p class="font-mono text-[10px] text-faint">Jarvis Mission Control · v2 · Mode Workspace — static mockup · click mode tabs, the model picker, and the console header to interact</p>
+</footer>
+
+<script>
+  // (3) MODEL DROPDOWN
+  function toggleModel() {
+    document.getElementById('modelMenu').classList.toggle('hidden');
+  }
+  document.addEventListener('click', (e) => {
+    const btn = document.getElementById('modelBtn');
+    const menu = document.getElementById('modelMenu');
+    if (!btn.contains(e.target) && !menu.contains(e.target)) menu.classList.add('hidden');
+  });
+
+  // (4) CONSOLE collapse / expand
+  let consoleOpen = true;
+  function toggleConsole() {
+    consoleOpen = !consoleOpen;
+    const c = document.getElementById('console');
+    const chev = document.getElementById('consoleChevron');
+    if (consoleOpen) {
+      c.style.height = '224px';
+      chev.style.transform = 'rotate(0deg)';
+    } else {
+      c.style.height = '38px';
+      chev.style.transform = 'rotate(-90deg)';
+    }
+  }
+
+  // (2) MODE TOGGLE — ghost hint: Chat is real, Build/Monitor show a toast
+  const ghostMsg = {
+    build: 'Build mode → canvas becomes an ACTION QUEUE (this version showcases Chat).',
+    monitor: 'Monitor mode → canvas becomes a STATUS GRID (this version showcases Chat).',
+  };
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const mode = tab.dataset.mode;
+      // reset
+      document.querySelectorAll('.mode-tab').forEach(t => {
+        t.className = 'mode-tab px-3 py-1.5 rounded-md text-[13px] font-500 text-faint hover:text-mute flex items-center gap-1.5' + (t.dataset.mode==='build'||t.dataset.mode==='monitor'?'':'');
+      });
+      tab.className = 'mode-tab px-3 py-1.5 rounded-md text-[13px] font-600 bg-accent/15 text-accent ring-1 ring-accent/40 flex items-center gap-1.5';
+      // re-add icons by reloading innerHTML isn't ideal; just toast for ghost modes
+      if (mode !== 'chat') showToast(ghostMsg[mode]);
+    });
+  });
+
+  function showToast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-panel2 border border-accent/40 text-[12px] text-ink font-mono shadow-2xl shadow-black/70 fade-in';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(window.__toastT);
+    window.__toastT = setTimeout(() => { t.style.opacity = '0'; }, 2600);
+  }
+</script>
+</body>
+</html>

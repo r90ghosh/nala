@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mission Control — 3 Multipurpose Versions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0e14;--panel:#0f131b;--line:#1e2430;--txt:#e7eaf0;--mut:#8a92a6;--accent:#38bdf8;--violet:#a78bfa}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 650px at 50% -8%,#12161f 0%,var(--bg) 58%);color:var(--txt);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap{max-width:1120px;margin:0 auto;padding:54px 28px 80px}
+  .kicker{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h1{font-size:38px;line-height:1.08;font-weight:800;margin:0 0 14px;letter-spacing:-.02em}
+  h1 span{color:var(--mut);font-weight:600}
+  .lede{color:var(--mut);font-size:16px;line-height:1.62;max-width:760px;margin:0 0 8px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 38px}
+  .chip{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.02)}
+  .chip b{color:var(--accent);font-weight:500}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+  .card{position:relative;display:block;text-decoration:none;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;overflow:hidden;transition:transform .15s,border-color .15s,box-shadow .15s}
+  .card:hover{transform:translateY(-3px);border-color:#2b3550;box-shadow:0 18px 50px -24px rgba(0,0,0,.85)}
+  .num{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--mut)}
+  .card h2{font-size:19px;font-weight:700;margin:8px 0 6px;letter-spacing:-.01em}
+  .tag{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--accent);border:1px solid #1c3a4d;background:#0c1a24;border-radius:6px;padding:3px 7px;display:inline-block;margin-bottom:10px}
+  .card p{color:var(--mut);font-size:13.5px;line-height:1.55;margin:0 0 14px}
+  .open{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)}
+  .bar{height:4px;border-radius:4px;margin-bottom:14px}
+  .b1{background:linear-gradient(90deg,#38bdf8,#0a0e14)}
+  .b2{background:linear-gradient(90deg,#34d399,#38bdf8)}
+  .b3{background:linear-gradient(90deg,#a78bfa,#38bdf8)}
+  .feet{margin-top:40px;border-top:1px solid var(--line);padding-top:22px;color:var(--mut);font-size:13.5px;line-height:1.75}
+  .feet b{color:var(--txt);font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:10px;font-size:12px;color:var(--mut)}
+  .legend span{font-family:'JetBrains Mono',monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">Jarvis · Mission Control · multipurpose</p>
+  <h1>One cockpit, <span>three layouts</span></h1>
+  <p class="lede">All three keep the Mission Control theme you picked and fold in everything we decided — a <b>purpose switcher</b> (Projects · Finance · Baby · Relationships · Home) with per-purpose <b>risk profiles</b>, <b>Build / Monitor / Chat</b> modes, an <b>all-provider model picker</b> (Anthropic · Gemini · OpenAI · Llama · Kimi · local), and a <b>graph memory</b> whose writes show up — and get confirmed — right in the observability feed. Each defaults to a different active purpose so you see the breadth. Desktop + iPhone in every one.</p>
+  <div class="meta">
+    <span class="chip"><b>purpose</b> = folder + manifest + risk profile</span>
+    <span class="chip">Mac-as-server · no Supabase</span>
+    <span class="chip">memory writes = confirmable events</span>
+    <span class="chip">finance: read-only</span>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="mission-control-v1-triptych.html">
+      <div class="bar b1"></div>
+      <div class="num">v1</div>
+      <h2>Command Triptych</h2>
+      <div class="tag">active: Projects</div>
+      <p>The most direct evolution of the Mission Control you loved — purpose rail + a fixed 3-column cockpit (status + memory · feed · actions + models). Dense, familiar, steer-at-a-glance.</p>
+      <span class="open">Open →</span>
+    </a>
+    <a class="card" href="mission-control-v2-workspace.html">
+      <div class="bar b2"></div>
+      <div class="num">v2</div>
+      <h2>Mode Workspace</h2>
+      <div class="tag">active: Baby · Chat</div>
+      <p>The main canvas reshapes to the mode. Shown in Chat on the Baby purpose (Hawaii reco, on-device model), with the observability feed as a collapsible bottom console. Flexible, app-like.</p>
+      <span class="open">Open →</span>
+    </a>
+    <a class="card" href="mission-control-v3-graph.html">
+      <div class="bar b3"></div>
+      <div class="num">v3</div>
+      <h2>Graph-Forward</h2>
+      <div class="tag">active: Relationships</div>
+      <p>The graph memory is the hero — a live node map (wife → tastes → past gifts → anniversary reco) with new writes glowing in. Leans into the claude-graph-memory / graphify idea.</p>
+      <span class="open">Open →</span>
+    </a>
+  </div>
+
+  <div class="feet">
+    <b>In every version</b> — purpose switcher + risk badges · Build/Monitor/Chat · all-provider model picker (cost + tool-calling flag) · observability feed (actions <em>and</em> memory-writes, confirmable) · scoped graph memory · spend + free-model rate limits · voice. And all your examples: the <em>hoa Stripe-webhook bug</em>, the <em>Hawaii baby reco</em>, the <em>anniversary reco</em>, the <em>read-only finance insight</em>.
+    <div class="legend">
+      <span>1 · purpose switcher</span><span>2 · modes</span><span>3 · model picker</span><span>4 · observability feed</span><span>5 · status</span><span>6 · actions/reco</span><span>7 · graph memory</span><span>8 · spend</span><span>9 · voice</span>
+    </div>
+    <p style="margin:16px 0 0">Plan: <b>~/.claude/plans/1-mac-mobile-virtual-gray.md</b> · earlier 5 directions: <a href="index.html" style="color:var(--accent)">index.html</a></p>
+  </div>
+</div>
+</body>
+</html>

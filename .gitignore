@@ -1,0 +1,19 @@
+# secrets — never commit
+.env
+*.pem
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# runtime data (lives in ~/.nala/ but belt-and-suspenders)
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# os
+.DS_Store

@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis — Conversation-First / Calm</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          serif: ['Fraunces', 'Georgia', 'serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          paper: '#FAFAF8',
+          ink: '#26241F',
+          mute: '#8A857B',
+          line: '#ECEAE3',
+          indigo: {
+            DEFAULT: '#5B5BD6',
+            soft: '#EEEEFB',
+            deep: '#4747B8',
+          },
+          sage: '#7C8B6E',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html { -webkit-font-smoothing: antialiased; }
+  body { background: #F1F0EC; }
+  .display { font-family: 'Fraunces', serif; font-optical-sizing: auto; }
+  .grain { background-image: radial-gradient(rgba(0,0,0,0.015) 1px, transparent 1px); background-size: 4px 4px; }
+  /* slim scrollbars */
+  .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scroll::-webkit-scrollbar-thumb { background: #DEDCD4; border-radius: 99px; }
+  .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+  /* waveform bars */
+  .wf { display:inline-flex; align-items:center; gap:1.5px; height:14px; }
+  .wf span { width:2px; border-radius:2px; background: currentColor; opacity:.55; }
+  @keyframes pulse-mic { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(91,91,214,.30);} 50% { transform: scale(1.03); box-shadow: 0 0 0 14px rgba(91,91,214,0);} }
+  .mic-live { animation: pulse-mic 2.4s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity:.5 } 50% { opacity:1 } }
+  .breathe { animation: breathe 2.6s ease-in-out infinite; }
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display:none; }
+  details[open] .chev { transform: rotate(180deg); }
+  .chev { transition: transform .2s ease; }
+  /* right rail collapse */
+  .rail { transition: width .28s cubic-bezier(.4,0,.2,1), opacity .2s ease; }
+</style>
+</head>
+<body class="font-sans text-ink">
+
+  <!-- ============ PAGE HEADER BAND ============ -->
+  <header class="grain border-b border-line bg-paper">
+    <div class="max-w-[1480px] mx-auto px-8 py-10">
+      <div class="flex items-start justify-between gap-8 flex-wrap">
+        <div>
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo flex items-center justify-center text-white shadow-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>
+            </div>
+            <span class="text-[13px] uppercase tracking-[0.22em] text-mute font-medium">Jarvis · Voice-First Dev Assistant</span>
+          </div>
+          <h1 class="display text-[40px] leading-[1.05] font-500 text-ink">Conversation-First</h1>
+          <p class="mt-2 text-[15.5px] text-mute max-w-xl leading-relaxed">The voice thread is the hero. Everything else — world status, action queue, spend, the raw observability feed — stays calm and secondary, one tap away in a slim rail or a swipe-up sheet.</p>
+        </div>
+        <!-- Feature legend -->
+        <div class="bg-white/70 backdrop-blur border border-line rounded-2xl p-5 max-w-[430px] shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+          <div class="text-[11px] uppercase tracking-[0.18em] text-mute font-semibold mb-3">Where the 7 features live</div>
+          <ul class="grid grid-cols-1 gap-y-1.5 text-[12.5px] text-ink/80">
+            <li class="flex gap-2"><span class="num">1</span> Voice conversation — bottom mic + thread bubbles</li>
+            <li class="flex gap-2"><span class="num">2</span> Observability feed — right-rail “Observe” panel</li>
+            <li class="flex gap-2"><span class="num">3</span> State-of-my-world — “World” card in rail</li>
+            <li class="flex gap-2"><span class="num">4</span> Capture & triage — inline proposed-task card</li>
+            <li class="flex gap-2"><span class="num">5</span> Action queue — rail status chips</li>
+            <li class="flex gap-2"><span class="num">6</span> Model tier slider — rail header</li>
+            <li class="flex gap-2"><span class="num">7</span> Spend meter — rail footer</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <style>
+    .num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:6px;background:#EEEEFB;color:#4747B8;font-size:10.5px;font-weight:700;flex-shrink:0}
+  </style>
+
+  <main class="max-w-[1480px] mx-auto px-8 py-12 space-y-16">
+
+    <!-- ===================================================================== -->
+    <!-- ============================ DESKTOP VIEW ============================ -->
+    <!-- ===================================================================== -->
+    <section>
+      <div class="flex items-center gap-3 mb-5">
+        <span class="display text-[22px] text-ink">Desktop</span>
+        <span class="text-[12px] text-mute">macOS · ~1280px</span>
+        <span class="h-px flex-1 bg-line"></span>
+      </div>
+
+      <!-- macOS window chrome -->
+      <div class="rounded-2xl overflow-hidden shadow-[0_30px_80px_-20px_rgba(40,36,31,0.25)] border border-line bg-paper">
+        <!-- title bar -->
+        <div class="h-11 bg-[#F4F3EF] border-b border-line flex items-center px-4 gap-2">
+          <span class="w-3 h-3 rounded-full bg-[#FF5F57]"></span>
+          <span class="w-3 h-3 rounded-full bg-[#FEBC2E]"></span>
+          <span class="w-3 h-3 rounded-full bg-[#28C840]"></span>
+          <div class="flex-1 flex justify-center">
+            <div class="px-4 py-1 rounded-md bg-white/70 border border-line text-[12px] text-mute flex items-center gap-2">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              jarvis.local
+            </div>
+          </div>
+          <span class="text-[12px] text-mute font-mono">⌥Space</span>
+        </div>
+
+        <!-- app body: thread + collapsible rail -->
+        <div class="grain flex" style="height:760px">
+
+          <!-- LEFT: conversation thread (HERO) -->
+          <div class="flex-1 flex flex-col min-w-0">
+            <!-- thread top bar -->
+            <div class="px-8 pt-6 pb-4 flex items-center justify-between">
+              <div>
+                <div class="display text-[20px] text-ink leading-none">Today</div>
+                <div class="text-[12.5px] text-mute mt-1.5">Tuesday · June 24 · 6 of 7 repos clean</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <!-- in-doubt actions indicator (feature 3) -->
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[12px] font-medium">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                  in-doubt actions: 1
+                </span>
+                <button id="railToggle" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-line text-[12.5px] text-ink/80 font-medium hover:border-indigo/40 hover:text-indigo transition">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                  Details
+                </button>
+              </div>
+            </div>
+
+            <!-- the thread -->
+            <div class="flex-1 overflow-y-auto thin-scroll px-8 pb-4 space-y-6">
+
+              <!-- User bubble -->
+              <div class="flex justify-end">
+                <div class="max-w-[78%]">
+                  <div class="rounded-[20px] rounded-br-md bg-indigo text-white px-5 py-3.5 shadow-[0_2px_10px_-2px_rgba(91,91,214,0.45)]">
+                    <p class="text-[15px] leading-snug">What's the state of my projects?</p>
+                  </div>
+                  <div class="flex items-center justify-end gap-2 mt-1.5 pr-1 text-indigo/70">
+                    <span class="wf text-indigo"><span style="height:5px"></span><span style="height:10px"></span><span style="height:7px"></span><span style="height:13px"></span><span style="height:6px"></span><span style="height:9px"></span></span>
+                    <span class="text-[11px] text-mute font-mono">0:03 · you · 9:41:02</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Jarvis bubble -->
+              <div class="flex justify-start">
+                <div class="max-w-[80%]">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-5 h-5 rounded-md bg-indigo/10 text-indigo flex items-center justify-center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/></svg></span>
+                    <span class="text-[12px] font-semibold text-ink">Jarvis</span>
+                  </div>
+                  <div class="rounded-[20px] rounded-bl-md bg-white border border-line px-5 py-3.5 shadow-sm">
+                    <p class="text-[15px] leading-relaxed text-ink/90">
+                      <span class="font-medium text-ink">6 of 7 clean.</span> <span class="font-semibold text-indigo-deep">parentlogs</span> has 2 open PRs and an uncommitted migration. <span class="font-semibold text-indigo-deep">travel_ai</span>’s last Netlify deploy <span class="text-rose-600 font-medium">failed 3 hours ago</span>. There’s <span class="font-medium">1 in-doubt action</span> from earlier waiting on you.
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-2 mt-1.5 pl-1">
+                    <button class="text-indigo/80 hover:text-indigo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></button>
+                    <span class="wf text-mute"><span style="height:8px"></span><span style="height:12px"></span><span style="height:6px"></span><span style="height:14px"></span><span style="height:9px"></span><span style="height:5px"></span><span style="height:11px"></span><span style="height:7px"></span></span>
+                    <span class="text-[11px] text-mute font-mono">0:07 · spoken · 9:41:05 · 412ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Day divider -->
+              <div class="flex items-center gap-3 py-1">
+                <span class="h-px flex-1 bg-line"></span>
+                <span class="text-[11px] uppercase tracking-[0.18em] text-mute">a moment later</span>
+                <span class="h-px flex-1 bg-line"></span>
+              </div>
+
+              <!-- User bubble: capture -->
+              <div class="flex justify-end">
+                <div class="max-w-[78%]">
+                  <div class="rounded-[20px] rounded-br-md bg-indigo text-white px-5 py-3.5 shadow-[0_2px_10px_-2px_rgba(91,91,214,0.45)]">
+                    <p class="text-[15px] leading-snug">File a bug — the Stripe webhook in hoa isn't idempotent.</p>
+                  </div>
+                  <div class="flex items-center justify-end gap-2 mt-1.5 pr-1">
+                    <span class="wf text-indigo"><span style="height:7px"></span><span style="height:12px"></span><span style="height:5px"></span><span style="height:10px"></span><span style="height:13px"></span><span style="height:6px"></span><span style="height:9px"></span></span>
+                    <span class="text-[11px] text-mute font-mono">0:05 · you · 9:43:11</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Jarvis: proposed task card INLINE (feature 4) -->
+              <div class="flex justify-start">
+                <div class="max-w-[80%] w-full">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <span class="w-5 h-5 rounded-md bg-indigo/10 text-indigo flex items-center justify-center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/></svg></span>
+                    <span class="text-[12px] font-semibold text-ink">Jarvis</span>
+                  </div>
+                  <div class="rounded-[20px] rounded-bl-md bg-white border border-line px-5 py-4 shadow-sm">
+                    <p class="text-[14.5px] leading-relaxed text-ink/90 mb-3.5">Got it. Here’s the task I’d file — confirm and I’ll add it to the backlog.</p>
+
+                    <!-- proposed task card -->
+                    <div class="rounded-2xl border border-indigo/20 bg-indigo-soft/40 p-4">
+                      <div class="flex items-start justify-between gap-3 mb-3">
+                        <div class="flex items-center gap-2">
+                          <span class="px-2 py-0.5 rounded-md bg-white border border-indigo/20 text-[10.5px] uppercase tracking-wide font-semibold text-indigo-deep">Proposed task</span>
+                        </div>
+                        <span class="text-[11px] text-mute font-mono">draft</span>
+                      </div>
+                      <div class="display text-[17px] text-ink leading-snug mb-3">Stripe webhook not idempotent</div>
+                      <div class="flex flex-wrap gap-2 mb-4">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-line text-[12px] text-ink/80"><span class="w-1.5 h-1.5 rounded-full bg-sage"></span>hoa-community-platform</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-[12px] text-rose-700 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>category: bug</span>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[12px] text-amber-700 font-medium">priority: high</span>
+                      </div>
+                      <div class="flex items-center gap-2.5">
+                        <button class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo text-white text-[13.5px] font-medium hover:bg-indigo-deep transition shadow-sm">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>
+                          Confirm &amp; file
+                        </button>
+                        <button class="px-4 py-2.5 rounded-xl bg-white border border-line text-[13.5px] text-ink/70 font-medium hover:border-mute/50 transition">Edit</button>
+                        <button class="px-4 py-2.5 rounded-xl bg-white border border-line text-[13.5px] text-mute font-medium hover:text-rose-600 transition">Discard</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 mt-1.5 pl-1">
+                    <button class="text-indigo/80 hover:text-indigo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg></button>
+                    <span class="wf text-mute"><span style="height:6px"></span><span style="height:11px"></span><span style="height:8px"></span><span style="height:13px"></span><span style="height:7px"></span><span style="height:10px"></span></span>
+                    <span class="text-[11px] text-mute font-mono">0:06 · spoken · 9:43:18 · 538ms · Sonnet</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- live partial transcript (in-progress) -->
+              <div class="flex justify-end">
+                <div class="max-w-[78%]">
+                  <div class="rounded-[20px] rounded-br-md bg-indigo/10 border border-indigo/20 px-5 py-3.5">
+                    <p class="text-[15px] leading-snug text-indigo-deep/80 italic">also bump travel_ai to opus and retry that deploy<span class="breathe">…</span></p>
+                  </div>
+                  <div class="flex items-center justify-end gap-2 mt-1.5 pr-1">
+                    <span class="text-[11px] text-indigo font-medium flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo animate-pulse"></span>listening · partial</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- BOTTOM: big calm push-to-talk -->
+            <div class="px-8 py-6 border-t border-line bg-paper/80 backdrop-blur">
+              <div class="flex items-center gap-5">
+                <!-- mic -->
+                <button class="mic-live relative w-[68px] h-[68px] rounded-full bg-indigo text-white flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(91,91,214,0.6)] flex-shrink-0 hover:bg-indigo-deep transition">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>
+                </button>
+                <!-- live waveform / hint -->
+                <div class="flex-1">
+                  <div class="flex items-center gap-1 h-9 text-indigo">
+                    <!-- animated-looking waveform -->
+                    <span class="wf" style="height:36px">
+                      <span style="height:8px"></span><span style="height:18px"></span><span style="height:30px"></span><span style="height:14px"></span><span style="height:24px"></span><span style="height:34px"></span><span style="height:11px"></span><span style="height:22px"></span><span style="height:30px"></span><span style="height:16px"></span><span style="height:9px"></span><span style="height:26px"></span><span style="height:33px"></span><span style="height:12px"></span><span style="height:20px"></span><span style="height:28px"></span><span style="height:8px"></span><span style="height:17px"></span><span style="height:31px"></span><span style="height:13px"></span><span style="height:23px"></span><span style="height:10px"></span><span style="height:29px"></span><span style="height:15px"></span><span style="height:25px"></span><span style="height:32px"></span><span style="height:9px"></span><span style="height:19px"></span><span style="height:27px"></span><span style="height:12px"></span>
+                    </span>
+                  </div>
+                  <div class="text-[12.5px] text-mute mt-1">Hold <span class="font-mono text-ink/70">Space</span> to talk · streaming speech-to-text live</div>
+                </div>
+                <!-- keyboard fallback -->
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <button class="px-3.5 py-2 rounded-xl bg-white border border-line text-[12.5px] text-mute hover:text-ink hover:border-mute/40 transition flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+                    Type
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: slim collapsible rail -->
+          <aside id="rail" class="rail w-[360px] border-l border-line bg-[#F7F6F2] flex flex-col" style="overflow:hidden">
+            <div class="p-5 overflow-y-auto thin-scroll flex-1 space-y-4" style="width:360px">
+
+              <!-- rail header: model tier slider (feature 6) -->
+              <div class="bg-white border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold">Model tier</span>
+                  <span class="text-[12px] font-medium text-indigo">Sonnet</span>
+                </div>
+                <!-- slider -->
+                <div class="relative h-1.5 rounded-full bg-line mb-2.5">
+                  <div class="absolute inset-y-0 left-0 rounded-full bg-indigo" style="width:50%"></div>
+                  <input id="tierSlider" type="range" min="0" max="2" value="1" class="absolute -inset-2 w-[calc(100%+1rem)] opacity-0 cursor-pointer" />
+                  <div id="tierKnob" class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-indigo shadow" style="left:calc(50% - 8px)"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-mute">
+                  <span>Haiku<br><span class="text-[10px]">cheap</span></span>
+                  <span class="text-center text-indigo font-medium">Sonnet<br><span class="text-[10px] text-mute">moderate</span></span>
+                  <span class="text-right">Opus<br><span class="text-[10px]">expensive</span></span>
+                </div>
+                <!-- bump prompt -->
+                <div class="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5">
+                  <svg class="mt-0.5 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2"><path d="M9.5 2 3 14h6l-1.5 8 9-12h-6l1-8z"/></svg>
+                  <div class="text-[12px] text-amber-800 leading-snug">This looks hard — <button class="font-semibold underline decoration-amber-400 underline-offset-2 hover:text-amber-900">bump to Opus?</button></div>
+                </div>
+              </div>
+
+              <!-- State-of-my-world (feature 3) -->
+              <div class="bg-white border border-line rounded-2xl overflow-hidden">
+                <div class="flex items-center justify-between px-4 pt-4 pb-2">
+                  <span class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold">State of my world</span>
+                  <span class="text-[11px] text-sage font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-sage"></span>6/7 clean</span>
+                </div>
+                <div class="divide-y divide-line">
+                  <!-- repo row: parentlogs (dirty) -->
+                  <div class="px-4 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[13px] font-medium text-ink">parentlogs</span>
+                      <span class="text-[10.5px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-medium">dirty</span>
+                    </div>
+                    <div class="flex items-center gap-2.5 mt-1 text-[11px] text-mute font-mono">
+                      <span>main</span><span>↑2 ↓0</span><span class="text-indigo">2 PRs</span><span class="text-emerald-600">● deploy ok</span>
+                    </div>
+                  </div>
+                  <!-- travel_ai (deploy failed) -->
+                  <div class="px-4 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[13px] font-medium text-ink">travel_ai</span>
+                      <span class="text-[10.5px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2.5 mt-1 text-[11px] text-mute font-mono">
+                      <span>main</span><span>↑0 ↓0</span><span class="text-rose-600">● deploy failed 3h</span>
+                    </div>
+                  </div>
+                  <!-- hoa -->
+                  <div class="px-4 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[13px] font-medium text-ink">hoa-community-platform</span>
+                      <span class="text-[10.5px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">clean</span>
+                    </div>
+                    <div class="flex items-center gap-2.5 mt-1 text-[11px] text-mute font-mono">
+                      <span>main</span><span>↑0 ↓1</span><span class="text-emerald-600">● deploy ok</span>
+                    </div>
+                  </div>
+                  <!-- collapsed remaining -->
+                  <details class="px-4 py-2.5">
+                    <summary class="flex items-center justify-between cursor-pointer text-[12px] text-mute hover:text-ink">
+                      <span>life_os · community_portal · legal-ai-assistant · last_mile</span>
+                      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                    </summary>
+                    <div class="mt-2.5 space-y-2.5">
+                      <div class="flex items-center justify-between text-[12px]"><span class="text-ink/80">life_os</span><span class="font-mono text-[11px] text-mute">main · ↑0↓0 · <span class="text-emerald-600">ok</span></span></div>
+                      <div class="flex items-center justify-between text-[12px]"><span class="text-ink/80">community_portal</span><span class="font-mono text-[11px] text-mute">main · ↑0↓0 · <span class="text-emerald-600">ok</span></span></div>
+                      <div class="flex items-center justify-between text-[12px]"><span class="text-ink/80">legal-ai-assistant</span><span class="font-mono text-[11px] text-mute">main · ↑0↓0 · <span class="text-emerald-600">ok</span></span></div>
+                      <div class="flex items-center justify-between text-[12px]"><span class="text-ink/80">last_mile</span><span class="font-mono text-[11px] text-mute">main · ↑0↓0 · <span class="text-emerald-600">ok</span></span></div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              <!-- Action queue (feature 5) -->
+              <div class="bg-white border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold">Action queue</span>
+                  <span class="text-[11px] text-mute">4 active</span>
+                </div>
+                <div class="space-y-2">
+                  <!-- awaiting confirm (irreversible) -->
+                  <div class="rounded-xl border border-amber-200 bg-amber-50/60 p-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[12.5px] text-ink font-medium">Mark task “Ship v2 paywall” done</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 font-semibold">awaiting_confirm</span>
+                    </div>
+                    <div class="text-[11px] text-amber-700/80 mt-1 mb-2">Irreversible · the in-doubt action from earlier</div>
+                    <div class="flex gap-2">
+                      <button class="flex-1 px-2.5 py-1.5 rounded-lg bg-indigo text-white text-[12px] font-medium hover:bg-indigo-deep transition">Confirm</button>
+                      <button class="flex-1 px-2.5 py-1.5 rounded-lg bg-white border border-line text-[12px] text-mute font-medium hover:text-rose-600 transition">Reject</button>
+                    </div>
+                  </div>
+                  <!-- done -->
+                  <div class="flex items-center justify-between rounded-xl border border-line p-2.5">
+                    <span class="text-[12.5px] text-ink/80">Commit migration → parentlogs</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">done</span>
+                  </div>
+                  <!-- pending -->
+                  <div class="flex items-center justify-between rounded-xl border border-line p-2.5">
+                    <span class="text-[12.5px] text-ink/80">Retry Netlify deploy → travel_ai</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold">pending</span>
+                  </div>
+                  <!-- failed -->
+                  <div class="flex items-center justify-between rounded-xl border border-line p-2.5">
+                    <span class="text-[12.5px] text-ink/80">Push to origin → community_portal</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 font-semibold">failed</span>
+                  </div>
+                  <!-- rejected -->
+                  <div class="flex items-center justify-between rounded-xl border border-line p-2.5 opacity-70">
+                    <span class="text-[12.5px] text-ink/60 line-through">Force-push rebase → life_os</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-semibold">rejected</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Observability feed (feature 2) — present but calm, expandable -->
+              <details class="bg-white border border-line rounded-2xl overflow-hidden" open>
+                <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none">
+                  <span class="flex items-center gap-2">
+                    <span class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold">Observe · live feed</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  </span>
+                  <svg class="chev text-mute" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                </summary>
+                <div class="px-4 pb-4 -mt-1">
+                  <div class="rounded-xl bg-[#FBFBF9] border border-line p-3 font-mono text-[11px] leading-relaxed space-y-1.5 max-h-[230px] overflow-y-auto thin-scroll">
+                    <div class="flex gap-2"><span class="text-mute">9:43:11</span><span class="text-sky-600 w-[88px]">utterance</span><span class="text-ink/70 truncate">“File a bug — stripe…”</span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:43:13</span><span class="text-sky-600 w-[88px]">stt_result</span><span class="text-ink/70">conf 0.97 · <span class="text-mute">181ms</span></span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:43:13</span><span class="text-violet-600 w-[88px]">llm_request</span><span class="text-ink/70">sonnet · 1.2k tok</span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:43:18</span><span class="text-violet-600 w-[88px]">llm_response</span><span class="text-ink/70">propose_task · <span class="text-mute">538ms</span></span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:43:18</span><span class="text-emerald-600 w-[88px]">tool_call</span><span class="text-ink/70">backlog.draft()</span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:43:19</span><span class="text-emerald-600 w-[88px]">tool_result</span><span class="text-ink/70">draft#214 · <span class="text-mute">96ms</span></span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:41:05</span><span class="text-violet-600 w-[88px]">llm_response</span><span class="text-ink/70">status summary · <span class="text-mute">412ms</span></span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:40:55</span><span class="text-rose-600 w-[88px]">error</span><span class="text-rose-500/90">netlify 502 · travel_ai</span></div>
+                    <div class="flex gap-2"><span class="text-mute">9:40:56</span><span class="text-amber-600 w-[88px]">reconcile</span><span class="text-ink/70">flagged in-doubt · <span class="text-mute">22ms</span></span></div>
+                  </div>
+                </div>
+              </details>
+
+              <!-- Spend meter (feature 7) -->
+              <div class="bg-white border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2.5">
+                  <span class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold">Spend today</span>
+                  <span class="text-[12px] text-mute font-mono">ceiling $10.00</span>
+                </div>
+                <div class="flex items-baseline gap-1.5 mb-3">
+                  <span class="display text-[26px] text-ink">$2.14</span>
+                  <span class="text-[12px] text-mute">/ $10.00</span>
+                </div>
+                <div class="h-2 rounded-full bg-line overflow-hidden mb-3">
+                  <div class="h-full rounded-full bg-gradient-to-r from-indigo to-indigo-deep" style="width:21.4%"></div>
+                </div>
+                <div class="space-y-1.5 text-[12px]">
+                  <div class="flex items-center justify-between"><span class="text-mute">Haiku</span><span class="font-mono text-ink/70">$0.18</span></div>
+                  <div class="flex items-center justify-between"><span class="text-mute">Sonnet</span><span class="font-mono text-ink/70">$1.31</span></div>
+                  <div class="flex items-center justify-between"><span class="text-mute">Opus</span><span class="font-mono text-ink/70">$0.65</span></div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-line flex items-center gap-1.5 text-[11px] text-mute">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg>
+                  BYOK · billed to your Anthropic key
+                </div>
+              </div>
+
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- ============================ IPHONE VIEW ============================= -->
+    <!-- ===================================================================== -->
+    <section>
+      <div class="flex items-center gap-3 mb-5">
+        <span class="display text-[22px] text-ink">iPhone — iOS</span>
+        <span class="text-[12px] text-mute">Full-screen conversation · swipe-up sheet · ~390px</span>
+        <span class="h-px flex-1 bg-line"></span>
+      </div>
+
+      <div class="flex flex-wrap gap-12 items-start">
+
+        <!-- Phone 1: conversation + peeking sheet -->
+        <div class="flex flex-col items-center gap-3">
+          <!-- iPhone frame -->
+          <div class="relative w-[392px] h-[810px] rounded-[58px] bg-[#1C1A17] p-[14px] shadow-[0_40px_90px_-30px_rgba(40,36,31,0.55)]">
+            <div class="relative w-full h-full rounded-[46px] overflow-hidden bg-paper grain">
+              <!-- dynamic island -->
+              <div class="absolute top-2.5 left-1/2 -translate-x-1/2 w-[120px] h-[34px] bg-black rounded-full z-30"></div>
+              <!-- status bar -->
+              <div class="absolute top-0 inset-x-0 h-[54px] flex items-end justify-between px-7 pb-2 z-20 text-[13px] font-semibold text-ink">
+                <span>9:41</span>
+                <span class="flex items-center gap-1.5">
+                  <svg width="17" height="12" viewBox="0 0 24 16" fill="currentColor"><rect x="0" y="9" width="3.5" height="7" rx="1"/><rect x="5.5" y="6" width="3.5" height="10" rx="1"/><rect x="11" y="3" width="3.5" height="13" rx="1"/><rect x="16.5" y="0" width="3.5" height="16" rx="1"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 24 18" fill="currentColor"><path d="M12 3C7 3 3 6 1 9l2 2c1.7-2.4 5-4 9-4s7.3 1.6 9 4l2-2c-2-3-6-6-10-6Z" opacity=".9"/><circle cx="12" cy="14" r="2.5"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 28 14" fill="none"><rect x="1" y="1" width="22" height="12" rx="3" stroke="currentColor" stroke-opacity=".4" stroke-width="1.2"/><rect x="3" y="3" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="24.5" y="4.5" width="2" height="5" rx="1" fill="currentColor" fill-opacity=".5"/></svg>
+                </span>
+              </div>
+
+              <!-- nav header -->
+              <div class="absolute top-[54px] inset-x-0 px-5 pt-2 pb-3 flex items-center justify-between z-10 bg-paper/85 backdrop-blur border-b border-line/60">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-indigo flex items-center justify-center text-white"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/></svg></div>
+                  <div>
+                    <div class="display text-[16px] leading-none text-ink">Jarvis</div>
+                    <div class="text-[10.5px] text-sage flex items-center gap-1 mt-0.5"><span class="w-1.5 h-1.5 rounded-full bg-sage"></span>6/7 clean</div>
+                  </div>
+                </div>
+                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10.5px] font-medium">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                  in-doubt: 1
+                </span>
+              </div>
+
+              <!-- conversation scroll -->
+              <div class="absolute top-[120px] bottom-[230px] inset-x-0 overflow-y-auto thin-scroll px-4 py-4 space-y-4">
+                <!-- user -->
+                <div class="flex justify-end">
+                  <div class="max-w-[82%]">
+                    <div class="rounded-[18px] rounded-br-md bg-indigo text-white px-4 py-2.5 shadow-sm">
+                      <p class="text-[14px] leading-snug">What's the state of my projects?</p>
+                    </div>
+                    <div class="flex items-center justify-end gap-1.5 mt-1 pr-1">
+                      <span class="wf text-indigo"><span style="height:5px"></span><span style="height:9px"></span><span style="height:6px"></span><span style="height:11px"></span></span>
+                      <span class="text-[10px] text-mute font-mono">0:03 · 9:41:02</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- jarvis -->
+                <div class="flex justify-start">
+                  <div class="max-w-[86%]">
+                    <div class="rounded-[18px] rounded-bl-md bg-white border border-line px-4 py-2.5 shadow-sm">
+                      <p class="text-[14px] leading-relaxed text-ink/90"><span class="font-medium">6 of 7 clean.</span> <span class="font-semibold text-indigo-deep">parentlogs</span> has 2 open PRs + an uncommitted migration. <span class="font-semibold text-indigo-deep">travel_ai</span>’s Netlify deploy <span class="text-rose-600 font-medium">failed 3h ago</span>. 1 in-doubt action waiting.</p>
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-1 pl-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5B5BD6" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+                      <span class="text-[10px] text-mute font-mono">0:07 · 412ms</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- user capture -->
+                <div class="flex justify-end">
+                  <div class="max-w-[82%]">
+                    <div class="rounded-[18px] rounded-br-md bg-indigo text-white px-4 py-2.5 shadow-sm">
+                      <p class="text-[14px] leading-snug">File a bug — the Stripe webhook in hoa isn't idempotent.</p>
+                    </div>
+                    <div class="flex items-center justify-end gap-1.5 mt-1 pr-1">
+                      <span class="wf text-indigo"><span style="height:6px"></span><span style="height:10px"></span><span style="height:5px"></span><span style="height:11px"></span></span>
+                      <span class="text-[10px] text-mute font-mono">0:05 · 9:43:11</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- jarvis proposed task -->
+                <div class="flex justify-start">
+                  <div class="max-w-[90%] w-full">
+                    <div class="rounded-[18px] rounded-bl-md bg-white border border-line px-3.5 py-3 shadow-sm">
+                      <p class="text-[13.5px] text-ink/90 mb-2.5 leading-snug">Here’s the task — confirm to file it.</p>
+                      <div class="rounded-xl border border-indigo/20 bg-indigo-soft/40 p-3">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="px-1.5 py-0.5 rounded bg-white border border-indigo/20 text-[9px] uppercase tracking-wide font-semibold text-indigo-deep">Proposed task</span>
+                          <span class="text-[10px] text-mute font-mono">draft</span>
+                        </div>
+                        <div class="display text-[15px] text-ink leading-snug mb-2.5">Stripe webhook not idempotent</div>
+                        <div class="flex flex-wrap gap-1.5 mb-3">
+                          <span class="px-2 py-0.5 rounded-full bg-white border border-line text-[10.5px] text-ink/80">hoa-community-platform</span>
+                          <span class="px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[10.5px] text-rose-700 font-medium">bug</span>
+                          <span class="px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10.5px] text-amber-700 font-medium">high</span>
+                        </div>
+                        <div class="flex gap-2">
+                          <button class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo text-white text-[12.5px] font-medium"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Confirm</button>
+                          <button class="px-3 py-2 rounded-lg bg-white border border-line text-[12.5px] text-mute font-medium">Edit</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-1 pl-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5B5BD6" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+                      <span class="text-[10px] text-mute font-mono">0:06 · 538ms · Sonnet</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- live partial -->
+                <div class="flex justify-end">
+                  <div class="max-w-[82%]">
+                    <div class="rounded-[18px] rounded-br-md bg-indigo/10 border border-indigo/20 px-4 py-2.5">
+                      <p class="text-[14px] leading-snug text-indigo-deep/80 italic">also retry that deploy<span class="breathe">…</span></p>
+                    </div>
+                    <div class="flex items-center justify-end gap-1.5 mt-1 pr-1 text-[10px] text-indigo font-medium">
+                      <span class="w-1.5 h-1.5 rounded-full bg-indigo animate-pulse"></span>listening
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- swipe-up sheet (PEEKING) -->
+              <div class="absolute bottom-0 inset-x-0 z-20">
+                <!-- big mic dock -->
+                <div class="px-6 pb-3 pt-2 bg-gradient-to-t from-paper via-paper to-transparent">
+                  <div class="flex flex-col items-center gap-2">
+                    <!-- waveform -->
+                    <div class="flex items-center gap-[2px] h-6 text-indigo">
+                      <span class="wf" style="height:24px"><span style="height:6px"></span><span style="height:14px"></span><span style="height:22px"></span><span style="height:10px"></span><span style="height:18px"></span><span style="height:24px"></span><span style="height:8px"></span><span style="height:16px"></span><span style="height:21px"></span><span style="height:11px"></span><span style="height:7px"></span><span style="height:19px"></span><span style="height:23px"></span><span style="height:9px"></span><span style="height:15px"></span><span style="height:20px"></span></span>
+                    </div>
+                    <button class="mic-live w-[78px] h-[78px] rounded-full bg-indigo text-white flex items-center justify-center shadow-[0_12px_32px_-8px_rgba(91,91,214,0.6)]">
+                      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/></svg>
+                    </button>
+                    <div class="text-[11px] text-mute">Hold to talk</div>
+                  </div>
+                </div>
+                <!-- sheet handle + peek -->
+                <div class="rounded-t-[24px] bg-white border-t border-x border-line shadow-[0_-8px_30px_-12px_rgba(40,36,31,0.2)] pt-2.5 pb-5 px-5">
+                  <div class="w-9 h-1 rounded-full bg-line mx-auto mb-3"></div>
+                  <div class="flex items-center justify-between mb-2.5">
+                    <span class="text-[12px] font-semibold text-ink">World · Actions · Observe</span>
+                    <span class="text-[10.5px] text-mute flex items-center gap-1">swipe up <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg></span>
+                  </div>
+                  <!-- peek row 1: spend + tier -->
+                  <div class="flex gap-2.5">
+                    <div class="flex-1 rounded-xl bg-[#F7F6F2] border border-line px-3 py-2.5">
+                      <div class="text-[9.5px] uppercase tracking-wide text-mute font-semibold mb-1">Spend</div>
+                      <div class="flex items-baseline gap-1"><span class="display text-[16px] text-ink">$2.14</span><span class="text-[10px] text-mute">/ $10</span></div>
+                      <div class="h-1 rounded-full bg-line mt-1.5 overflow-hidden"><div class="h-full bg-indigo rounded-full" style="width:21.4%"></div></div>
+                    </div>
+                    <div class="flex-1 rounded-xl bg-[#F7F6F2] border border-line px-3 py-2.5">
+                      <div class="text-[9.5px] uppercase tracking-wide text-mute font-semibold mb-1">Tier</div>
+                      <div class="text-[13px] font-medium text-indigo">Sonnet</div>
+                      <div class="text-[10px] text-amber-700 mt-0.5">bump to Opus?</div>
+                    </div>
+                  </div>
+                  <!-- peek row 2: queue chip + awaiting confirm -->
+                  <div class="mt-2.5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[12px] text-ink font-medium">Mark “Ship v2 paywall” done</span>
+                      <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 font-semibold">awaiting_confirm</span>
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                      <button class="flex-1 px-2 py-1.5 rounded-lg bg-indigo text-white text-[11.5px] font-medium">Confirm</button>
+                      <button class="flex-1 px-2 py-1.5 rounded-lg bg-white border border-line text-[11.5px] text-mute font-medium">Reject</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- home indicator -->
+              <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 rounded-full bg-ink/30 z-30"></div>
+            </div>
+          </div>
+          <span class="text-[12px] text-mute">Full-screen conversation · sheet peeking with spend, tier &amp; awaiting-confirm</span>
+        </div>
+
+        <!-- Phone 2: sheet EXPANDED (observability) -->
+        <div class="flex flex-col items-center gap-3">
+          <div class="relative w-[392px] h-[810px] rounded-[58px] bg-[#1C1A17] p-[14px] shadow-[0_40px_90px_-30px_rgba(40,36,31,0.55)]">
+            <div class="relative w-full h-full rounded-[46px] overflow-hidden bg-paper grain">
+              <div class="absolute top-2.5 left-1/2 -translate-x-1/2 w-[120px] h-[34px] bg-black rounded-full z-30"></div>
+              <div class="absolute top-0 inset-x-0 h-[54px] flex items-end justify-between px-7 pb-2 z-20 text-[13px] font-semibold text-ink">
+                <span>9:41</span>
+                <span class="flex items-center gap-1.5">
+                  <svg width="17" height="12" viewBox="0 0 24 16" fill="currentColor"><rect x="0" y="9" width="3.5" height="7" rx="1"/><rect x="5.5" y="6" width="3.5" height="10" rx="1"/><rect x="11" y="3" width="3.5" height="13" rx="1"/><rect x="16.5" y="0" width="3.5" height="16" rx="1"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 24 18" fill="currentColor"><path d="M12 3C7 3 3 6 1 9l2 2c1.7-2.4 5-4 9-4s7.3 1.6 9 4l2-2c-2-3-6-6-10-6Z" opacity=".9"/><circle cx="12" cy="14" r="2.5"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 28 14" fill="none"><rect x="1" y="1" width="22" height="12" rx="3" stroke="currentColor" stroke-opacity=".4" stroke-width="1.2"/><rect x="3" y="3" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="24.5" y="4.5" width="2" height="5" rx="1" fill="currentColor" fill-opacity=".5"/></svg>
+                </span>
+              </div>
+
+              <!-- dimmed conversation behind -->
+              <div class="absolute inset-0 top-[54px] bg-paper/40"></div>
+
+              <!-- EXPANDED sheet -->
+              <div class="absolute top-[88px] bottom-0 inset-x-0 z-20 rounded-t-[28px] bg-white border-t border-x border-line shadow-[0_-12px_40px_-12px_rgba(40,36,31,0.25)] flex flex-col">
+                <div class="w-9 h-1 rounded-full bg-line mx-auto my-3"></div>
+                <!-- tabs -->
+                <div class="px-5 flex gap-1.5 mb-3">
+                  <span class="px-3 py-1.5 rounded-full bg-indigo text-white text-[12px] font-medium">Observe</span>
+                  <span class="px-3 py-1.5 rounded-full bg-[#F7F6F2] text-mute text-[12px] font-medium border border-line">World</span>
+                  <span class="px-3 py-1.5 rounded-full bg-[#F7F6F2] text-mute text-[12px] font-medium border border-line">Actions</span>
+                  <span class="ml-auto inline-flex items-center gap-1 text-[10.5px] text-emerald-600 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>live</span>
+                </div>
+
+                <!-- observability event feed (feature 2) -->
+                <div class="px-5 flex-1 overflow-y-auto thin-scroll pb-6">
+                  <div class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold mb-2.5">Event feed</div>
+                  <div class="rounded-2xl border border-line bg-[#FBFBF9] p-3 font-mono text-[11px] leading-relaxed space-y-2">
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:11</span><div class="flex-1"><span class="text-sky-600 font-medium">utterance</span><div class="text-ink/70 text-[10.5px]">“File a bug — stripe webhook…”</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:13</span><div class="flex-1"><span class="text-sky-600 font-medium">stt_result</span> <span class="text-mute">181ms</span><div class="text-ink/70 text-[10.5px]">conf 0.97</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:13</span><div class="flex-1"><span class="text-violet-600 font-medium">llm_request</span><div class="text-ink/70 text-[10.5px]">sonnet · 1.2k tok</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:18</span><div class="flex-1"><span class="text-violet-600 font-medium">llm_response</span> <span class="text-mute">538ms</span><div class="text-ink/70 text-[10.5px]">propose_task</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:18</span><div class="flex-1"><span class="text-emerald-600 font-medium">tool_call</span><div class="text-ink/70 text-[10.5px]">backlog.draft()</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:43:19</span><div class="flex-1"><span class="text-emerald-600 font-medium">tool_result</span> <span class="text-mute">96ms</span><div class="text-ink/70 text-[10.5px]">draft#214 created</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:40:55</span><div class="flex-1"><span class="text-rose-600 font-medium">error</span><div class="text-rose-500/90 text-[10.5px]">netlify 502 · travel_ai</div></div></div>
+                    <div class="flex items-start gap-2"><span class="text-mute w-[52px]">9:40:56</span><div class="flex-1"><span class="text-amber-600 font-medium">reconcile</span> <span class="text-mute">22ms</span><div class="text-ink/70 text-[10.5px]">flagged in-doubt action</div></div></div>
+                  </div>
+
+                  <!-- world peek under feed -->
+                  <div class="text-[11px] uppercase tracking-[0.16em] text-mute font-semibold mt-4 mb-2">World — 6/7 clean</div>
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-between rounded-xl border border-line bg-white px-3 py-2"><span class="text-[12.5px] font-medium text-ink">parentlogs</span><span class="text-[10px] font-mono text-mute">main ↑2 · <span class="text-indigo">2 PRs</span> · <span class="text-amber-600">dirty</span></span></div>
+                    <div class="flex items-center justify-between rounded-xl border border-line bg-white px-3 py-2"><span class="text-[12.5px] font-medium text-ink">travel_ai</span><span class="text-[10px] font-mono text-mute">main · <span class="text-rose-600">deploy failed 3h</span></span></div>
+                    <div class="flex items-center justify-between rounded-xl border border-line bg-white px-3 py-2"><span class="text-[12.5px] font-medium text-ink">hoa-community-platform</span><span class="text-[10px] font-mono text-mute">main ↓1 · <span class="text-emerald-600">ok</span></span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 rounded-full bg-ink/30 z-30"></div>
+            </div>
+          </div>
+          <span class="text-[12px] text-mute">Sheet expanded → the observability event feed (watch &amp; steer)</span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- ============================== FOOTNOTE ============================== -->
+    <!-- ===================================================================== -->
+    <section class="border-t border-line pt-8">
+      <div class="flex flex-wrap items-center gap-x-8 gap-y-3 text-[12.5px] text-mute">
+        <span class="display text-ink text-[15px]">Conversation-First / Calm</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-indigo"></span>Warm indigo accent</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-sage"></span>Sage signal</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-paper border border-line"></span>Off-white paper #FAFAF8</span>
+        <span>Inter body · Fraunces display serif</span>
+        <span class="ml-auto">Voice thread = hero · status &amp; observability = calm secondary</span>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // Toggle slim right rail (desktop)
+    (function () {
+      const rail = document.getElementById('rail');
+      const btn = document.getElementById('railToggle');
+      let open = true;
+      btn.addEventListener('click', () => {
+        open = !open;
+        rail.style.width = open ? '360px' : '0px';
+        rail.style.opacity = open ? '1' : '0';
+        btn.classList.toggle('text-indigo', open);
+        btn.classList.toggle('border-indigo/40', open);
+      });
+    })();
+
+    // Model tier slider
+    (function () {
+      const slider = document.getElementById('tierSlider');
+      const knob = document.getElementById('tierKnob');
+      const fill = knob.previousElementSibling; // the indigo bar
+      const tierLabel = slider.closest('.bg-white').querySelector('.text-indigo');
+      const names = ['Haiku', 'Sonnet', 'Opus'];
+      const pcts = [0, 50, 100];
+      slider.addEventListener('input', () => {
+        const v = +slider.value;
+        fill.style.width = pcts[v] + '%';
+        knob.style.left = 'calc(' + pcts[v] + '% - 8px)';
+        if (tierLabel) tierLabel.textContent = names[v];
+      });
+    })();
+  </script>
+</body>
+</html>

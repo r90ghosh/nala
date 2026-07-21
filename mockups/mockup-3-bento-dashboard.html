@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis — Glanceable Bento Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+        borderRadius: { '2xl': '1.1rem', '3xl': '1.5rem' },
+        colors: {
+          ink: '#0f1115',
+          paper: '#f6f7f9',
+        },
+        boxShadow: {
+          bento: '0 1px 2px rgba(16,17,21,0.04), 0 8px 24px -12px rgba(16,17,21,0.10)',
+          bentohover: '0 1px 2px rgba(16,17,21,0.05), 0 18px 40px -16px rgba(16,17,21,0.18)',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #cfd3da; border-radius: 99px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .bento { transition: transform .25s cubic-bezier(.2,.7,.2,1), box-shadow .25s; }
+  .bento:hover { transform: translateY(-2px); }
+
+  /* mic pulse */
+  @keyframes pulsering {
+    0% { transform: scale(1); opacity: .55; }
+    70% { transform: scale(1.9); opacity: 0; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+  .mic-ring { animation: pulsering 1.8s ease-out infinite; }
+  .mic-ring.delay { animation-delay: .6s; }
+
+  /* live waveform bars */
+  @keyframes wav { 0%,100% { transform: scaleY(.32); } 50% { transform: scaleY(1); } }
+  .wbar { transform-origin: center; animation: wav 1s ease-in-out infinite; }
+
+  @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+  .caret { animation: blink 1s step-end infinite; }
+
+  /* iOS horizontal swipe rail */
+  .swipe-rail { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+  .swipe-rail > * { scroll-snap-align: start; }
+  .swipe-rail::-webkit-scrollbar { display: none; }
+
+  .ios-frame { scrollbar-width: none; }
+  .ios-frame::-webkit-scrollbar { display: none; }
+
+  input[type=range].tier {
+    -webkit-appearance: none; appearance: none; height: 6px; border-radius: 99px;
+    background: linear-gradient(90deg,#34d399 0%,#34d399 50%, #fbbf24 50%, #fbbf24 100%);
+    outline: none;
+  }
+  input[type=range].tier::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 99px;
+    background: #fff; border: 2px solid #0f1115; box-shadow: 0 2px 6px rgba(0,0,0,.18); cursor: pointer;
+    margin-top: 0;
+  }
+  input[type=range].tier::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 99px; background: #fff; border: 2px solid #0f1115; cursor: pointer;
+  }
+  .legend-num { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased">
+
+<!-- ========================= PAGE HEADER BAND ========================= -->
+<header class="bg-white/70 backdrop-blur border-b border-zinc-200/70 sticky top-0 z-40">
+  <div class="max-w-[1400px] mx-auto px-6 py-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+    <div class="flex items-center gap-3">
+      <!-- Jarvis mark -->
+      <div class="w-10 h-10 rounded-2xl bg-ink text-white grid place-items-center shadow-bento">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-lg font-extrabold tracking-tight">Jarvis</h1>
+          <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">v1 · coding leg</span>
+        </div>
+        <p class="text-xs text-zinc-500 -mt-0.5">Voice-first AI for your software workflow</p>
+      </div>
+    </div>
+
+    <div class="hidden lg:block h-9 w-px bg-zinc-200 mx-1"></div>
+
+    <div class="min-w-0">
+      <div class="text-sm font-bold flex items-center gap-2">
+        Glanceable Bento Dashboard
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Mockup 3</span>
+      </div>
+      <p class="text-xs text-zinc-500 truncate">Status-first home as a modern bento grid — glance, then steer the agent by voice.</p>
+    </div>
+
+    <div class="ml-auto flex items-center gap-2">
+      <a href="#desktop" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 transition">Desktop</a>
+      <a href="#iphone" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 transition">iPhone</a>
+    </div>
+  </div>
+</header>
+
+<!-- ========================= FEATURE LEGEND ========================= -->
+<section class="max-w-[1400px] mx-auto px-6 pt-6">
+  <div class="rounded-2xl bg-white border border-zinc-200 shadow-bento p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-500">Feature map — 7 features, where they live</h2>
+      <span class="text-[11px] text-zinc-400">match the ① numbers on the mockups</span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-[12.5px]">
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">1</span><div><span class="font-semibold">Voice conversation</span><div class="text-zinc-500">Mic FAB · push-to-talk · live waveform + partials · spoken replies</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">2</span><div><span class="font-semibold">Observability feed</span><div class="text-zinc-500">Event timeline w/ timestamps + latency_ms</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">3</span><div><span class="font-semibold">State of my world</span><div class="text-zinc-500">7 repos · branch · clean/dirty · PRs · deploy · sparklines</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">4</span><div><span class="font-semibold">Capture &amp; triage</span><div class="text-zinc-500">Speak → proposed task card → confirm → backlog</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">5</span><div><span class="font-semibold">Action queue</span><div class="text-zinc-500">pending / done / failed / rejected / awaiting_confirm</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">6</span><div><span class="font-semibold">Model tier slider</span><div class="text-zinc-500">Haiku / Sonnet / Opus · "bump tier?" prompt</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold">7</span><div><span class="font-semibold">Spend meter</span><div class="text-zinc-500">$2.14 / $10.00 · per-model breakdown</div></div></div>
+      <div class="flex gap-2.5 items-start"><span class="legend-num shrink-0 w-6 h-6 grid place-items-center rounded-lg bg-amber-500 text-white text-[11px] font-bold">!</span><div><span class="font-semibold">In-doubt actions</span><div class="text-zinc-500">Permanent indicator · 1 awaiting review</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= DESKTOP VIEW ========================= -->
+<section id="desktop" class="max-w-[1400px] mx-auto px-6 pt-10">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-[11px] font-bold uppercase tracking-widest text-zinc-400">Desktop</span>
+    <span class="text-[11px] text-zinc-400">· macOS · 1280px</span>
+    <div class="h-px flex-1 bg-zinc-200"></div>
+  </div>
+
+  <!-- macOS / browser window chrome -->
+  <div class="rounded-3xl overflow-hidden shadow-2xl border border-zinc-300/70 bg-paper">
+    <!-- title bar -->
+    <div class="bg-gradient-to-b from-zinc-100 to-zinc-50 border-b border-zinc-200 px-4 py-2.5 flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <span class="w-3 h-3 rounded-full bg-[#ff5f57] border border-black/10"></span>
+        <span class="w-3 h-3 rounded-full bg-[#febc2e] border border-black/10"></span>
+        <span class="w-3 h-3 rounded-full bg-[#28c840] border border-black/10"></span>
+      </div>
+      <div class="flex-1 flex justify-center">
+        <div class="flex items-center gap-2 bg-white/80 border border-zinc-200 rounded-lg px-3 py-1 text-[11px] text-zinc-500 max-w-md w-full justify-center">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          app.jarvis.dev
+        </div>
+      </div>
+      <div class="text-[11px] font-medium text-zinc-400 w-10 text-right">⌘K</div>
+    </div>
+
+    <!-- App top bar -->
+    <div class="bg-white/60 border-b border-zinc-200 px-6 py-3 flex items-center gap-4">
+      <div class="flex items-center gap-2.5">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100"></span>
+        <span class="text-sm font-bold">Good morning, Ashirbad</span>
+      </div>
+      <span class="text-xs text-zinc-400 hidden md:block">Tuesday, June 24 · 9:42 AM</span>
+      <div class="ml-auto flex items-center gap-2">
+        <!-- in-doubt quick pill (feature !) -->
+        <button class="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          In-doubt: 1
+        </button>
+        <!-- BYOK badge -->
+        <span class="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-600 border border-zinc-200">BYOK · Anthropic</span>
+        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-fuchsia-400 grid place-items-center text-white text-xs font-bold">AG</div>
+      </div>
+    </div>
+
+    <!-- ===== BENTO GRID ===== -->
+    <div class="p-5 md:p-6 relative">
+      <div class="grid grid-cols-12 gap-4 auto-rows-[minmax(0,auto)]">
+
+        <!-- (a) STATE OF MY WORLD — large tile [feature 3] -->
+        <div class="bento col-span-12 lg:col-span-8 rounded-2xl bg-white border border-zinc-200 shadow-bento hover:shadow-bentohover p-5 relative">
+          <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">3</span>
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h3 class="text-base font-bold flex items-center gap-2">State of my world
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">6 / 7 clean</span>
+              </h3>
+              <p class="text-xs text-zinc-500 mt-0.5">7 repos · branch · git status · open PRs · last Netlify deploy</p>
+            </div>
+            <span class="text-[11px] text-zinc-400 font-mono">synced 9:41:58</span>
+          </div>
+
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-2.5">
+            <!-- Repo row template -->
+            <!-- parentlogs (dirty, 2 PRs) -->
+            <div class="rounded-xl border border-amber-200 bg-amber-50/40 px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ring-4 ring-amber-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-sm truncate">parentlogs</span>
+                  <span class="text-[10px] font-mono text-zinc-500 bg-white border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span>
+                </div>
+                <div class="text-[11px] text-amber-700 mt-0.5 truncate">dirty · uncommitted migration · ↑1</div>
+              </div>
+              <!-- sparkline -->
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,16 8,14 16,17 24,10 32,12 40,6 48,9 56,4" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0">
+                <div class="text-[11px] font-semibold text-zinc-700 flex items-center gap-1 justify-end"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>2 PRs</div>
+                <div class="text-[10px] text-emerald-600 font-medium">deploy ✓</div>
+              </div>
+            </div>
+
+            <!-- life_os -->
+            <div class="rounded-xl border border-zinc-200 bg-white px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">life_os</span><span class="text-[10px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span></div>
+                <div class="text-[11px] text-zinc-500 mt-0.5 truncate">clean · up to date</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,12 8,11 16,13 24,11 32,8 40,9 48,7 56,6" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-emerald-600 font-medium">deploy ✓</div></div>
+            </div>
+
+            <!-- travel_ai (deploy failed) -->
+            <div class="rounded-xl border border-rose-200 bg-rose-50/40 px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">travel_ai</span><span class="text-[10px] font-mono text-zinc-500 bg-white border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span></div>
+                <div class="text-[11px] text-rose-600 mt-0.5 truncate font-medium">clean · Netlify build failed 3h ago</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,8 8,9 16,7 24,10 32,9 40,12 48,16 56,18" fill="none" stroke="#f43f5e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-rose-600 font-semibold">deploy ✕</div></div>
+            </div>
+
+            <!-- hoa-community-platform -->
+            <div class="rounded-xl border border-zinc-200 bg-white px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">hoa-community-platform</span><span class="text-[10px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">dev</span></div>
+                <div class="text-[11px] text-zinc-500 mt-0.5 truncate">clean · ↓2 behind origin</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,14 8,12 16,13 24,9 32,11 40,8 48,10 56,7" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-emerald-600 font-medium">deploy ✓</div></div>
+            </div>
+
+            <!-- community_portal -->
+            <div class="rounded-xl border border-zinc-200 bg-white px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">community_portal</span><span class="text-[10px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span></div>
+                <div class="text-[11px] text-zinc-500 mt-0.5 truncate">clean · Expo · up to date</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,13 8,14 16,11 24,12 32,10 40,11 48,8 56,9" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-zinc-400 font-medium">EAS</div></div>
+            </div>
+
+            <!-- legal-ai-assistant -->
+            <div class="rounded-xl border border-zinc-200 bg-white px-3.5 py-3 flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">legal-ai-assistant</span><span class="text-[10px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span></div>
+                <div class="text-[11px] text-zinc-500 mt-0.5 truncate">clean · FastAPI · up to date</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,15 8,13 16,14 24,12 32,13 40,10 48,11 56,9" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-zinc-400 font-medium">local</div></div>
+            </div>
+
+            <!-- last_mile -->
+            <div class="rounded-xl border border-zinc-200 bg-white px-3.5 py-3 flex items-center gap-3 xl:col-span-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 ring-4 ring-emerald-100"></span>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2"><span class="font-semibold text-sm truncate">last_mile</span><span class="text-[10px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 shrink-0">main</span></div>
+                <div class="text-[11px] text-zinc-500 mt-0.5 truncate">clean · MVP complete · up to date</div>
+              </div>
+              <svg width="56" height="22" viewBox="0 0 56 22" class="shrink-0"><polyline points="0,16 8,15 16,13 24,14 32,11 40,12 48,9 56,8" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="text-right shrink-0"><div class="text-[11px] text-zinc-400 font-medium">0 PRs</div><div class="text-[10px] text-emerald-600 font-medium">deploy ✓</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- right column stack -->
+        <div class="col-span-12 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+
+          <!-- (d) IN-DOUBT ALERT [feature !] -->
+          <div class="bento rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 shadow-bento hover:shadow-bentohover p-4 relative">
+            <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-amber-500 text-white text-[11px] font-bold shadow">!</span>
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-8 h-8 rounded-xl bg-amber-100 grid place-items-center text-amber-600">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+              </div>
+              <div>
+                <div class="text-sm font-bold text-amber-900">In-doubt actions <span class="ml-1 text-xs font-extrabold bg-amber-500 text-white rounded-full px-2 py-0.5">1</span></div>
+                <div class="text-[11px] text-amber-700">Agent paused — needs your call</div>
+              </div>
+            </div>
+            <div class="rounded-xl bg-white/80 border border-amber-200 p-3 mt-2">
+              <div class="text-[11px] text-amber-700 font-mono mb-1">08:51:07 · earlier</div>
+              <p class="text-[13px] text-zinc-800 leading-snug">"Delete the stale <span class="font-mono">staging-old</span> branch on <b>travel_ai</b>?" — irreversible, deferred for review.</p>
+              <div class="flex gap-2 mt-2.5">
+                <button class="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-ink text-white hover:bg-black transition">Review</button>
+                <button class="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-white border border-amber-200 text-amber-700 hover:bg-amber-50 transition">Dismiss</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- (b) SPEND GAUGE [feature 7] -->
+          <div class="bento rounded-2xl bg-white border border-zinc-200 shadow-bento hover:shadow-bentohover p-4 relative">
+            <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">7</span>
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-sm font-bold">Spend today</h3>
+              <span class="text-[11px] text-zinc-400">ceiling $10.00</span>
+            </div>
+            <div class="flex items-center gap-4">
+              <!-- radial gauge -->
+              <div class="relative w-[92px] h-[92px] shrink-0">
+                <svg width="92" height="92" viewBox="0 0 92 92" class="-rotate-90">
+                  <circle cx="46" cy="46" r="38" fill="none" stroke="#eef0f3" stroke-width="9"/>
+                  <circle cx="46" cy="46" r="38" fill="none" stroke="#6366f1" stroke-width="9" stroke-linecap="round"
+                          stroke-dasharray="238.76" stroke-dashoffset="187.66"/>
+                </svg>
+                <div class="absolute inset-0 grid place-items-center text-center">
+                  <div>
+                    <div class="text-lg font-extrabold tracking-tight">$2.14</div>
+                    <div class="text-[10px] text-zinc-400 -mt-0.5">21% used</div>
+                  </div>
+                </div>
+              </div>
+              <!-- per-model breakdown -->
+              <div class="flex-1 space-y-2 text-[12px]">
+                <div>
+                  <div class="flex justify-between mb-0.5"><span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-emerald-400"></span>Haiku</span><span class="font-mono text-zinc-600">$0.18</span></div>
+                  <div class="h-1.5 rounded-full bg-zinc-100 overflow-hidden"><div class="h-full bg-emerald-400" style="width:14%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-0.5"><span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-amber-400"></span>Sonnet</span><span class="font-mono text-zinc-600">$1.31</span></div>
+                  <div class="h-1.5 rounded-full bg-zinc-100 overflow-hidden"><div class="h-full bg-amber-400" style="width:61%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between mb-0.5"><span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-indigo-500"></span>Opus</span><span class="font-mono text-zinc-600">$0.65</span></div>
+                  <div class="h-1.5 rounded-full bg-zinc-100 overflow-hidden"><div class="h-full bg-indigo-500" style="width:30%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- (e) MODEL TIER [feature 6] -->
+          <div class="bento rounded-2xl bg-white border border-zinc-200 shadow-bento hover:shadow-bentohover p-4 relative sm:col-span-2 lg:col-span-1">
+            <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">6</span>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold">Model tier</h3>
+              <span id="tierBadge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Sonnet · moderate</span>
+            </div>
+            <input id="tierSlider" type="range" min="0" max="2" step="1" value="1" class="tier w-full" />
+            <div class="flex justify-between text-[10px] font-medium text-zinc-400 mt-1.5">
+              <span>Haiku<br><span class="text-emerald-600">cheap</span></span>
+              <span class="text-center">Sonnet<br><span class="text-amber-600">moderate</span></span>
+              <span class="text-right">Opus<br><span class="text-indigo-600">expensive</span></span>
+            </div>
+            <!-- bump prompt -->
+            <div class="mt-3 rounded-xl bg-indigo-50 border border-indigo-200 p-2.5 flex items-start gap-2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.2" class="mt-0.5 shrink-0"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+              <div class="min-w-0">
+                <p class="text-[12px] text-indigo-900 leading-snug">This task looks hard (multi-file refactor). <b>Bump to Opus?</b></p>
+                <div class="flex gap-1.5 mt-1.5">
+                  <button class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">Bump tier</button>
+                  <button class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-700 transition">Keep Sonnet</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- (c) ACTION QUEUE [feature 5] -->
+        <div class="bento col-span-12 lg:col-span-5 rounded-2xl bg-white border border-zinc-200 shadow-bento hover:shadow-bentohover p-5 relative">
+          <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">5</span>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold">Action queue</h3>
+            <span class="text-[11px] text-zinc-400">5 actions · 1 awaiting you</span>
+          </div>
+          <div class="space-y-2">
+            <!-- awaiting_confirm (irreversible) -->
+            <div class="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-3">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-400 text-white">awaiting_confirm</span>
+                <span class="text-[13px] font-semibold">Mark task done — "Fix Stripe webhook"</span>
+              </div>
+              <div class="flex items-center justify-between mt-2">
+                <span class="text-[11px] text-zinc-500 font-mono">irreversible · hoa-community-platform</span>
+                <div class="flex gap-1.5">
+                  <button class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>Confirm</button>
+                  <button class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-white border border-zinc-300 text-zinc-600 hover:bg-zinc-50 transition flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18M6 6l12 12"/></svg>Reject</button>
+                </div>
+              </div>
+            </div>
+            <!-- done -->
+            <div class="rounded-xl border border-zinc-200 bg-white p-3 flex items-center gap-2.5">
+              <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">done</span>
+              <span class="text-[13px] flex-1 truncate">Create branch <span class="font-mono text-zinc-500">fix/migration</span> · parentlogs</span>
+              <span class="text-[11px] text-zinc-400 font-mono">9:39:12</span>
+            </div>
+            <!-- pending -->
+            <div class="rounded-xl border border-zinc-200 bg-white p-3 flex items-center gap-2.5">
+              <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">pending</span>
+              <span class="text-[13px] flex-1 truncate">Re-run failed Netlify build · travel_ai</span>
+              <span class="text-[11px] text-blue-500 font-mono flex items-center gap-1"><svg class="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>running</span>
+            </div>
+            <!-- failed -->
+            <div class="rounded-xl border border-zinc-200 bg-white p-3 flex items-center gap-2.5">
+              <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">failed</span>
+              <span class="text-[13px] flex-1 truncate">Push to origin · auth token expired</span>
+              <span class="text-[11px] text-zinc-400 font-mono">9:31:44</span>
+            </div>
+            <!-- rejected -->
+            <div class="rounded-xl border border-zinc-200 bg-white p-3 flex items-center gap-2.5 opacity-70">
+              <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-600">rejected</span>
+              <span class="text-[13px] flex-1 truncate line-through decoration-zinc-300">Force-push to main · life_os</span>
+              <span class="text-[11px] text-zinc-400 font-mono">9:22:08</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CAPTURE & TRIAGE [feature 4] -->
+        <div class="bento col-span-12 sm:col-span-6 lg:col-span-4 rounded-2xl bg-white border border-zinc-200 shadow-bento hover:shadow-bentohover p-5 relative">
+          <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">4</span>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold">Capture &amp; triage</h3>
+            <span class="text-[11px] text-zinc-400">spoken → proposed</span>
+          </div>
+          <!-- what user said -->
+          <div class="rounded-xl bg-zinc-50 border border-zinc-200 p-3 mb-3">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1 flex items-center gap-1">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 19v3"/></svg>You said
+            </div>
+            <p class="text-[13px] text-zinc-700 italic">"File a bug — the Stripe webhook in hoa isn't idempotent."</p>
+          </div>
+          <!-- proposed card -->
+          <div class="rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-3">
+            <div class="flex items-center gap-1.5 mb-2">
+              <span class="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Proposed task</span>
+              <span class="text-[10px] text-zinc-400">— confirm to add to backlog</span>
+            </div>
+            <p class="text-sm font-semibold mb-2">Stripe webhook not idempotent</p>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+              <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white border border-zinc-200 text-zinc-600">project: <b>hoa-community-platform</b></span>
+              <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700">priority: high</span>
+              <span class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white border border-zinc-200 text-zinc-600">category: bug</span>
+            </div>
+            <div class="flex gap-2">
+              <button class="flex-1 text-xs font-semibold py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">Confirm → backlog</button>
+              <button class="text-xs font-semibold px-3 py-2 rounded-lg bg-white border border-zinc-300 text-zinc-600 hover:bg-zinc-50 transition">Edit</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- OBSERVABILITY FEED [feature 2] -->
+        <div class="bento col-span-12 lg:col-span-3 rounded-2xl bg-ink text-zinc-200 shadow-bento hover:shadow-bentohover p-5 relative overflow-hidden">
+          <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-white text-ink text-[11px] font-bold shadow z-10">2</span>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>Live feed</h3>
+            <span class="text-[10px] text-zinc-500 font-mono">latency_ms</span>
+          </div>
+          <div class="space-y-1.5 font-mono text-[11px] leading-tight">
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:01</span><span class="px-1.5 py-0.5 rounded bg-zinc-700/60 text-zinc-300">utterance</span><span class="ml-auto text-zinc-500">—</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:01</span><span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300">stt_result</span><span class="ml-auto text-emerald-400">208ms</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:02</span><span class="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">llm_request</span><span class="ml-auto text-zinc-500">—</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:02</span><span class="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">llm_response</span><span class="ml-auto text-amber-400">412ms</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:03</span><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">tool_call</span><span class="ml-auto text-zinc-500">git.status</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:03</span><span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">tool_result</span><span class="ml-auto text-emerald-400">96ms</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:04</span><span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">error</span><span class="ml-auto text-rose-300 truncate">netlify 502</span></div>
+            <div class="flex items-center gap-2"><span class="text-zinc-500">09:42:05</span><span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">reconcile</span><span class="ml-auto text-amber-400">331ms</span></div>
+          </div>
+          <div class="mt-3 pt-3 border-t border-zinc-700/60 text-[10px] text-zinc-500 font-mono">8 events · avg 261ms</div>
+        </div>
+      </div>
+
+      <!-- VOICE FAB + transcript popover [feature 1] -->
+      <div class="absolute bottom-8 right-8 z-30 flex items-end gap-3">
+        <!-- transcript bubble -->
+        <div class="hidden xl:block w-80 rounded-2xl bg-white border border-zinc-200 shadow-bentohover p-3.5 relative">
+          <span class="absolute -top-2 -left-2 legend-num w-6 h-6 grid place-items-center rounded-lg bg-ink text-white text-[11px] font-bold shadow">1</span>
+          <div class="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>Listening · push-to-talk
+          </div>
+          <!-- live waveform -->
+          <div class="flex items-center justify-center gap-[3px] h-9 mb-2.5">
+            <span class="wbar w-[3px] h-7 bg-indigo-400 rounded-full" style="animation-delay:0s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-400 rounded-full" style="animation-delay:.1s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-500 rounded-full" style="animation-delay:.2s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-500 rounded-full" style="animation-delay:.3s"></span>
+            <span class="wbar w-[3px] h-7 bg-fuchsia-400 rounded-full" style="animation-delay:.4s"></span>
+            <span class="wbar w-[3px] h-7 bg-fuchsia-400 rounded-full" style="animation-delay:.5s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-500 rounded-full" style="animation-delay:.6s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-400 rounded-full" style="animation-delay:.7s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-400 rounded-full" style="animation-delay:.8s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-500 rounded-full" style="animation-delay:.9s"></span>
+            <span class="wbar w-[3px] h-7 bg-fuchsia-400 rounded-full" style="animation-delay:1s"></span>
+            <span class="wbar w-[3px] h-7 bg-indigo-400 rounded-full" style="animation-delay:1.1s"></span>
+          </div>
+          <div class="space-y-2 text-[13px]">
+            <div><span class="text-[10px] font-semibold text-zinc-400">You</span><p class="text-zinc-800">"What's the state of my projects?"</p></div>
+            <div><span class="text-[10px] font-semibold text-indigo-500">Jarvis</span>
+              <p class="text-zinc-700">6 of 7 clean. parentlogs has 2 open PRs and an uncommitted migration. travel_ai's last Netlify deploy failed 3 hours ago. 1 in-doubt action from earlier.<span class="caret text-indigo-500 font-bold">▍</span></p>
+            </div>
+          </div>
+        </div>
+        <!-- the FAB -->
+        <button id="fabDesktop" class="relative w-16 h-16 rounded-full bg-ink text-white grid place-items-center shadow-2xl hover:scale-105 active:scale-95 transition">
+          <span class="mic-ring absolute inset-0 rounded-full bg-rose-400/40"></span>
+          <span class="mic-ring delay absolute inset-0 rounded-full bg-rose-400/30"></span>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========================= IPHONE VIEW ========================= -->
+<section id="iphone" class="max-w-[1400px] mx-auto px-6 pt-14 pb-20">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-[11px] font-bold uppercase tracking-widest text-zinc-400">iPhone — iOS</span>
+    <span class="text-[11px] text-zinc-400">· native app · 390px · vertical bento + swipeable cards</span>
+    <div class="h-px flex-1 bg-zinc-200"></div>
+  </div>
+
+  <div class="flex justify-center">
+    <!-- iPhone frame -->
+    <div class="relative w-[390px]">
+      <div class="relative rounded-[3.2rem] bg-black p-[12px] shadow-2xl">
+        <!-- side buttons -->
+        <div class="absolute -left-[3px] top-28 w-[3px] h-8 rounded-l bg-zinc-700"></div>
+        <div class="absolute -left-[3px] top-40 w-[3px] h-12 rounded-l bg-zinc-700"></div>
+        <div class="absolute -left-[3px] top-56 w-[3px] h-12 rounded-l bg-zinc-700"></div>
+        <div class="absolute -right-[3px] top-44 w-[3px] h-16 rounded-r bg-zinc-700"></div>
+
+        <!-- screen -->
+        <div class="ios-frame relative rounded-[2.5rem] bg-paper overflow-y-auto overflow-x-hidden h-[820px]">
+
+          <!-- iOS status bar -->
+          <div class="sticky top-0 z-30 bg-paper/85 backdrop-blur">
+            <div class="flex items-center justify-between px-7 pt-3 pb-1 text-[13px] font-semibold text-ink">
+              <span>9:41</span>
+              <span class="flex items-center gap-1.5">
+                <!-- signal -->
+                <svg width="17" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2.5" width="3" height="9.5" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+                <!-- wifi -->
+                <svg width="16" height="11" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5 9.8 9.3a2.6 2.6 0 0 0-3.6 0L8 11.5Zm0-5.4c1.5 0 2.9.5 4 1.5l1.4-1.7A8.7 8.7 0 0 0 8 3.6c-2 0-3.9.7-5.4 2.3L4 7.6c1.1-1 2.5-1.5 4-1.5ZM8 .6C5 .6 2.3 1.7.2 3.6L1.6 5.3A9.6 9.6 0 0 1 8 2.8c2.4 0 4.7.9 6.4 2.5l1.4-1.7A12 12 0 0 0 8 .6Z"/></svg>
+                <!-- battery -->
+                <span class="flex items-center"><span class="w-[22px] h-[11px] rounded-[3px] border border-ink/40 relative inline-flex items-center px-[1px]"><span class="h-[7px] w-[15px] rounded-[1px] bg-ink"></span></span><span class="w-[1.5px] h-[4px] bg-ink/40 rounded-r ml-[1px]"></span></span>
+              </span>
+            </div>
+            <!-- dynamic island -->
+            <div class="absolute left-1/2 -translate-x-1/2 top-2.5 w-[112px] h-[30px] rounded-full bg-black"></div>
+          </div>
+
+          <!-- App header -->
+          <div class="px-4 pt-2 pb-1 flex items-center justify-between">
+            <div>
+              <div class="text-[11px] text-zinc-400 font-medium">Tue, Jun 24</div>
+              <h2 class="text-xl font-extrabold tracking-tight flex items-center gap-1.5">Jarvis
+                <span class="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100"></span>
+              </h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-zinc-100 text-zinc-500 border border-zinc-200">BYOK</span>
+              <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-fuchsia-400 grid place-items-center text-white text-[11px] font-bold">AG</div>
+            </div>
+          </div>
+
+          <!-- ===== iOS vertical bento ===== -->
+          <div class="px-4 pb-32 space-y-3">
+
+            <!-- swipeable summary cards [feature 3 + 1] -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5 px-0.5">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Swipe summary</span>
+                <span class="text-[10px] text-zinc-400">● ○ ○</span>
+              </div>
+              <div class="swipe-rail flex gap-3 overflow-x-auto pb-1 -mx-4 px-4">
+                <!-- card 1: state -->
+                <div class="relative shrink-0 w-[270px] rounded-2xl bg-ink text-white p-4 shadow-bento">
+                  <span class="absolute top-3 right-3 legend-num w-5 h-5 grid place-items-center rounded-md bg-white/15 text-white text-[10px] font-bold">3</span>
+                  <div class="text-[11px] text-zinc-400 font-medium mb-1">State of my world</div>
+                  <div class="text-3xl font-extrabold tracking-tight">6<span class="text-zinc-500 text-xl">/7</span> <span class="text-base font-semibold text-emerald-400">clean</span></div>
+                  <p class="text-[12px] text-zinc-300 mt-1.5 leading-snug">parentlogs: 2 PRs + dirty migration. travel_ai deploy failed 3h ago.</p>
+                </div>
+                <!-- card 2: spend [feature 7] -->
+                <div class="relative shrink-0 w-[270px] rounded-2xl bg-white border border-zinc-200 p-4 shadow-bento">
+                  <span class="absolute top-3 right-3 legend-num w-5 h-5 grid place-items-center rounded-md bg-zinc-100 text-zinc-500 text-[10px] font-bold">7</span>
+                  <div class="text-[11px] text-zinc-400 font-medium mb-1">Spend today</div>
+                  <div class="text-3xl font-extrabold tracking-tight">$2.14<span class="text-zinc-400 text-base font-semibold"> / $10</span></div>
+                  <div class="h-2 rounded-full bg-zinc-100 overflow-hidden mt-2.5"><div class="h-full bg-indigo-500" style="width:21%"></div></div>
+                  <div class="text-[11px] text-zinc-500 mt-1.5">Sonnet $1.31 · Opus $0.65 · Haiku $0.18</div>
+                </div>
+                <!-- card 3: in-doubt [feature !] -->
+                <div class="relative shrink-0 w-[270px] rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4 shadow-bento">
+                  <span class="absolute top-3 right-3 legend-num w-5 h-5 grid place-items-center rounded-md bg-amber-400 text-white text-[10px] font-bold">!</span>
+                  <div class="text-[11px] text-amber-700 font-medium mb-1">In-doubt actions</div>
+                  <div class="text-3xl font-extrabold tracking-tight text-amber-900">1</div>
+                  <p class="text-[12px] text-amber-800 mt-1.5 leading-snug">Delete stale staging-old branch on travel_ai? Needs review.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- repos list [feature 3] -->
+            <div class="relative rounded-2xl bg-white border border-zinc-200 shadow-bento p-3.5">
+              <span class="absolute -top-2 -left-2 legend-num w-5 h-5 grid place-items-center rounded-md bg-ink text-white text-[10px] font-bold shadow">3</span>
+              <div class="flex items-center justify-between mb-2.5">
+                <h3 class="text-sm font-bold">Repos</h3>
+                <span class="text-[10px] text-zinc-400 font-mono">synced 9:41</span>
+              </div>
+              <div class="space-y-1.5">
+                <!-- parentlogs -->
+                <div class="flex items-center gap-2.5 py-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">parentlogs</span><div class="text-[10px] text-amber-700">dirty · migration · ↑1</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,12 7,10 14,12 21,7 28,8 35,4 42,3" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] font-semibold text-zinc-500 shrink-0">2 PRs</span>
+                </div>
+                <!-- life_os -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">life_os</span><div class="text-[10px] text-zinc-400">clean</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,9 7,8 14,10 21,8 28,6 35,7 42,5" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-emerald-600 font-semibold shrink-0">✓</span>
+                </div>
+                <!-- travel_ai -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">travel_ai</span><div class="text-[10px] text-rose-600">deploy failed 3h ago</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,5 7,6 14,5 21,8 28,7 35,11 42,13" fill="none" stroke="#f43f5e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-rose-600 font-semibold shrink-0">✕</span>
+                </div>
+                <!-- hoa -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">hoa-community-platform</span><div class="text-[10px] text-zinc-400">clean · ↓2 behind</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,10 7,9 14,10 21,6 28,8 35,5 42,6" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-emerald-600 font-semibold shrink-0">✓</span>
+                </div>
+                <!-- community_portal -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">community_portal</span><div class="text-[10px] text-zinc-400">clean · Expo</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,9 7,10 14,8 21,9 28,7 35,8 42,6" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-zinc-400 font-semibold shrink-0">EAS</span>
+                </div>
+                <!-- legal-ai -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">legal-ai-assistant</span><div class="text-[10px] text-zinc-400">clean · FastAPI</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,11 7,9 14,10 21,8 28,9 35,7 42,8" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-zinc-400 font-semibold shrink-0">local</span>
+                </div>
+                <!-- last_mile -->
+                <div class="flex items-center gap-2.5 py-1.5 border-t border-zinc-100">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                  <div class="min-w-0 flex-1"><span class="text-[13px] font-semibold">last_mile</span><div class="text-[10px] text-zinc-400">clean · MVP</div></div>
+                  <svg width="42" height="16" viewBox="0 0 42 16" class="shrink-0"><polyline points="0,12 7,11 14,9 21,10 28,8 35,9 42,7" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <span class="text-[10px] text-emerald-600 font-semibold shrink-0">✓</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action queue [feature 5] -->
+            <div class="relative rounded-2xl bg-white border border-zinc-200 shadow-bento p-3.5">
+              <span class="absolute -top-2 -left-2 legend-num w-5 h-5 grid place-items-center rounded-md bg-ink text-white text-[10px] font-bold shadow">5</span>
+              <div class="flex items-center justify-between mb-2.5"><h3 class="text-sm font-bold">Action queue</h3><span class="text-[10px] text-zinc-400">1 awaiting you</span></div>
+              <!-- awaiting confirm -->
+              <div class="rounded-xl border-2 border-amber-300 bg-amber-50/50 p-2.5 mb-2">
+                <div class="flex items-center gap-1.5 mb-1.5">
+                  <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amber-400 text-white">awaiting_confirm</span>
+                  <span class="text-[10px] text-zinc-500 font-mono">irreversible</span>
+                </div>
+                <p class="text-[13px] font-semibold mb-2">Mark task done — "Fix Stripe webhook"</p>
+                <div class="flex gap-2">
+                  <button class="flex-1 text-[12px] font-semibold py-2 rounded-lg bg-emerald-600 text-white">Confirm</button>
+                  <button class="flex-1 text-[12px] font-semibold py-2 rounded-lg bg-white border border-zinc-300 text-zinc-600">Reject</button>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-center gap-2 text-[12px]"><span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">done</span><span class="flex-1 truncate">Create branch fix/migration</span></div>
+                <div class="flex items-center gap-2 text-[12px]"><span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">pending</span><span class="flex-1 truncate">Re-run Netlify build · travel_ai</span></div>
+                <div class="flex items-center gap-2 text-[12px]"><span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">failed</span><span class="flex-1 truncate">Push to origin · token expired</span></div>
+                <div class="flex items-center gap-2 text-[12px] opacity-70"><span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-zinc-200 text-zinc-600">rejected</span><span class="flex-1 truncate line-through decoration-zinc-300">Force-push to main</span></div>
+              </div>
+            </div>
+
+            <!-- Capture & triage [feature 4] -->
+            <div class="relative rounded-2xl bg-white border border-zinc-200 shadow-bento p-3.5">
+              <span class="absolute -top-2 -left-2 legend-num w-5 h-5 grid place-items-center rounded-md bg-ink text-white text-[10px] font-bold shadow">4</span>
+              <h3 class="text-sm font-bold mb-2">Capture &amp; triage</h3>
+              <div class="rounded-xl bg-zinc-50 border border-zinc-200 p-2.5 mb-2">
+                <div class="text-[9px] font-semibold uppercase tracking-wide text-zinc-400 mb-0.5">You said</div>
+                <p class="text-[12px] text-zinc-700 italic">"File a bug — the Stripe webhook in hoa isn't idempotent."</p>
+              </div>
+              <div class="rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 p-2.5">
+                <span class="text-[9px] font-bold uppercase text-indigo-600">Proposed task</span>
+                <p class="text-[13px] font-semibold mt-0.5 mb-1.5">Stripe webhook not idempotent</p>
+                <div class="flex flex-wrap gap-1 mb-2">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-white border border-zinc-200 text-zinc-600">hoa-community-platform</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700">high</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-white border border-zinc-200 text-zinc-600">bug</span>
+                </div>
+                <button class="w-full text-[12px] font-semibold py-2 rounded-lg bg-indigo-600 text-white">Confirm → backlog</button>
+              </div>
+            </div>
+
+            <!-- Model tier [feature 6] -->
+            <div class="relative rounded-2xl bg-white border border-zinc-200 shadow-bento p-3.5">
+              <span class="absolute -top-2 -left-2 legend-num w-5 h-5 grid place-items-center rounded-md bg-ink text-white text-[10px] font-bold shadow">6</span>
+              <div class="flex items-center justify-between mb-2.5"><h3 class="text-sm font-bold">Model tier</h3><span id="tierBadgeM" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Sonnet</span></div>
+              <input id="tierSliderM" type="range" min="0" max="2" step="1" value="1" class="tier w-full" />
+              <div class="flex justify-between text-[10px] font-medium text-zinc-400 mt-1.5"><span class="text-emerald-600">Haiku</span><span class="text-amber-600">Sonnet</span><span class="text-indigo-600">Opus</span></div>
+              <div class="mt-2.5 rounded-xl bg-indigo-50 border border-indigo-200 p-2.5 text-[12px] text-indigo-900 flex items-center justify-between gap-2">
+                <span>This looks hard. <b>Bump to Opus?</b></span>
+                <button class="text-[11px] font-semibold px-2 py-1 rounded-lg bg-indigo-600 text-white shrink-0">Bump</button>
+              </div>
+            </div>
+
+            <!-- Live feed [feature 2] -->
+            <div class="relative rounded-2xl bg-ink text-zinc-200 shadow-bento p-3.5">
+              <span class="absolute -top-2 -left-2 legend-num w-5 h-5 grid place-items-center rounded-md bg-white text-ink text-[10px] font-bold shadow z-10">2</span>
+              <div class="flex items-center justify-between mb-2.5"><h3 class="text-sm font-bold text-white flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Live feed</h3><span class="text-[9px] text-zinc-500 font-mono">latency_ms</span></div>
+              <div class="space-y-1 font-mono text-[10px] leading-tight">
+                <div class="flex items-center gap-1.5"><span class="text-zinc-500">09:42:01</span><span class="px-1 py-0.5 rounded bg-sky-500/20 text-sky-300">stt_result</span><span class="ml-auto text-emerald-400">208ms</span></div>
+                <div class="flex items-center gap-1.5"><span class="text-zinc-500">09:42:02</span><span class="px-1 py-0.5 rounded bg-violet-500/20 text-violet-300">llm_response</span><span class="ml-auto text-amber-400">412ms</span></div>
+                <div class="flex items-center gap-1.5"><span class="text-zinc-500">09:42:03</span><span class="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">tool_result</span><span class="ml-auto text-emerald-400">96ms</span></div>
+                <div class="flex items-center gap-1.5"><span class="text-zinc-500">09:42:04</span><span class="px-1 py-0.5 rounded bg-rose-500/20 text-rose-300">error</span><span class="ml-auto text-rose-300">netlify 502</span></div>
+                <div class="flex items-center gap-1.5"><span class="text-zinc-500">09:42:05</span><span class="px-1 py-0.5 rounded bg-amber-500/20 text-amber-300">reconcile</span><span class="ml-auto text-amber-400">331ms</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- iOS bottom voice bar + FAB [feature 1] -->
+          <div class="sticky bottom-0 z-30">
+            <!-- listening transcript strip -->
+            <div id="iosTranscript" class="mx-4 mb-2 rounded-2xl bg-white/95 backdrop-blur border border-zinc-200 shadow-bentohover p-3">
+              <div class="text-[9px] font-semibold uppercase tracking-wide text-rose-500 mb-1.5 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>Listening</div>
+              <div class="flex items-center gap-[2px] h-5 mb-1.5">
+                <span class="wbar w-[2.5px] h-4 bg-indigo-400 rounded-full" style="animation-delay:0s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-500 rounded-full" style="animation-delay:.12s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-fuchsia-400 rounded-full" style="animation-delay:.24s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-500 rounded-full" style="animation-delay:.36s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-400 rounded-full" style="animation-delay:.48s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-fuchsia-400 rounded-full" style="animation-delay:.6s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-500 rounded-full" style="animation-delay:.72s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-400 rounded-full" style="animation-delay:.84s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-indigo-500 rounded-full" style="animation-delay:.96s"></span>
+                <span class="wbar w-[2.5px] h-4 bg-fuchsia-400 rounded-full" style="animation-delay:1.08s"></span>
+              </div>
+              <p class="text-[12px] text-zinc-700 leading-snug"><span class="text-zinc-400 font-semibold text-[10px]">Jarvis:</span> 6 of 7 clean. travel_ai's last deploy failed 3 hours ago.<span class="caret text-indigo-500 font-bold">▍</span></p>
+            </div>
+            <!-- bottom bar with pinned FAB -->
+            <div class="relative bg-paper/85 backdrop-blur border-t border-zinc-200 px-6 pt-2.5 pb-7 flex items-center justify-between">
+              <button class="flex flex-col items-center gap-0.5 text-[10px] font-medium text-ink"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Home</button>
+              <button class="flex flex-col items-center gap-0.5 text-[10px] font-medium text-zinc-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>Feed</button>
+              <div class="w-14"></div>
+              <button class="flex flex-col items-center gap-0.5 text-[10px] font-medium text-zinc-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Queue</button>
+              <button class="flex flex-col items-center gap-0.5 text-[10px] font-medium text-zinc-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>Me</button>
+
+              <!-- pinned mic FAB bottom-right area (centered above bar) -->
+              <button id="fabIos" class="absolute left-1/2 -translate-x-1/2 -top-7 w-16 h-16 rounded-full bg-ink text-white grid place-items-center shadow-2xl border-4 border-paper active:scale-95 transition">
+                <span class="mic-ring absolute inset-0 rounded-full bg-rose-400/40"></span>
+                <span class="mic-ring delay absolute inset-0 rounded-full bg-rose-400/30"></span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"/><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/></svg>
+              </button>
+            </div>
+            <!-- home indicator -->
+            <div class="flex justify-center pb-1.5 bg-paper/85"><div class="w-32 h-1 rounded-full bg-ink/30"></div></div>
+          </div>
+
+        </div>
+      </div>
+      <p class="text-center text-[11px] text-zinc-400 mt-3">iPhone — iOS · mic FAB pinned · cards swipe horizontally</p>
+    </div>
+  </div>
+</section>
+
+<footer class="max-w-[1400px] mx-auto px-6 pb-10 text-center text-[11px] text-zinc-400">
+  Jarvis — Glanceable Bento Dashboard · static mockup · all 7 features + in-doubt indicator surfaced on both Desktop and iPhone
+</footer>
+
+<script>
+  // ---- Model tier slider (desktop + mobile) ----
+  const tiers = [
+    { label: 'Haiku · cheap',     badge: 'Haiku · cheap',     mShort: 'Haiku',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', grad: '0%,#34d399 100%,#34d399' },
+    { label: 'Sonnet · moderate', badge: 'Sonnet · moderate', mShort: 'Sonnet', cls: 'bg-amber-50 text-amber-700 border-amber-200',     grad: '50%,#fbbf24 100%' },
+    { label: 'Opus · expensive',  badge: 'Opus · expensive',  mShort: 'Opus',   cls: 'bg-indigo-50 text-indigo-700 border-indigo-200',  grad: '' },
+  ];
+
+  function gradientFor(v) {
+    // 0 -> green up to thumb; 1 -> green/amber; 2 -> green/amber/indigo
+    if (v === 0) return 'linear-gradient(90deg,#34d399 0%,#34d399 16%,#e5e7eb 16%,#e5e7eb 100%)';
+    if (v === 1) return 'linear-gradient(90deg,#34d399 0%,#fbbf24 50%,#e5e7eb 50%,#e5e7eb 100%)';
+    return 'linear-gradient(90deg,#34d399 0%,#fbbf24 50%,#6366f1 100%)';
+  }
+
+  function applyTier(v, badgeEl, isMobile) {
+    const t = tiers[v];
+    if (badgeEl) {
+      badgeEl.textContent = isMobile ? t.mShort : t.badge;
+      badgeEl.className = badgeEl.className.replace(/bg-\S+|text-\S+|border-\S+/g, '').trim();
+      badgeEl.className += ' ' + t.cls;
+    }
+  }
+
+  function wireSlider(sliderId, badgeId, isMobile) {
+    const slider = document.getElementById(sliderId);
+    const badge = document.getElementById(badgeId);
+    if (!slider) return;
+    const sync = () => {
+      const v = parseInt(slider.value, 10);
+      slider.style.background = gradientFor(v);
+      applyTier(v, badge, isMobile);
+    };
+    slider.addEventListener('input', sync);
+    sync();
+  }
+  wireSlider('tierSlider', 'tierBadge', false);
+  wireSlider('tierSliderM', 'tierBadgeM', true);
+
+  // ---- FAB listening toggle ----
+  function wireFab(id) {
+    const fab = document.getElementById(id);
+    if (!fab) return;
+    let listening = true; // start in listening state for the mockup
+    fab.addEventListener('click', () => {
+      listening = !listening;
+      const rings = fab.querySelectorAll('.mic-ring');
+      rings.forEach(r => r.style.display = listening ? '' : 'none');
+      fab.classList.toggle('bg-ink', listening);
+      fab.classList.toggle('bg-rose-500', !listening);
+    });
+  }
+  wireFab('fabDesktop');
+  wireFab('fabIos');
+</script>
+</body>
+</html>

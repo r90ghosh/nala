@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jarvis — Mission Control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+          mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ink: '#0a0e14',
+          panel: '#111827',
+          panel2: '#0f1623',
+          hair: '#1f2937',
+          cyan: '#22d3ee',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { background:#06080d; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#1f2937; border-radius:8px; }
+  ::-webkit-scrollbar-thumb:hover { background:#374151; }
+  .hairline { border:1px solid rgba(148,163,184,0.10); }
+  .glow-cyan { box-shadow:0 0 0 1px rgba(34,211,238,0.25), 0 0 22px rgba(34,211,238,0.18); }
+  .grid-bg {
+    background-image:
+      radial-gradient(circle at 18% 0%, rgba(34,211,238,0.06), transparent 42%),
+      radial-gradient(circle at 100% 100%, rgba(59,130,246,0.05), transparent 42%),
+      linear-gradient(rgba(148,163,184,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.035) 1px, transparent 1px);
+    background-size: auto, auto, 28px 28px, 28px 28px;
+  }
+  @keyframes pulseDot { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.45; transform:scale(.82);} }
+  .live-dot { animation: pulseDot 1.4s ease-in-out infinite; }
+  @keyframes barWave { 0%,100%{ transform:scaleY(.35);} 50%{ transform:scaleY(1);} }
+  .wave span { display:inline-block; width:3px; border-radius:3px; background:#22d3ee; transform-origin:center; animation: barWave 1s ease-in-out infinite; }
+  .feed-row { transition: background .15s ease; }
+  .feed-row:hover { background: rgba(34,211,238,0.04); }
+  .callout {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:999px; font-size:10px; font-weight:700;
+    background:#22d3ee; color:#06121a; font-family:'JetBrains Mono',monospace;
+    box-shadow:0 0 12px rgba(34,211,238,0.55);
+  }
+  input[type="range"].tier { -webkit-appearance:none; appearance:none; height:6px; border-radius:999px;
+    background:linear-gradient(90deg,#22d3ee, #3b82f6); outline:none; }
+  input[type="range"].tier::-webkit-slider-thumb { -webkit-appearance:none; appearance:none; width:18px; height:18px; border-radius:50%;
+    background:#e6fbff; border:2px solid #22d3ee; cursor:pointer; box-shadow:0 0 10px rgba(34,211,238,0.7); }
+  input[type="range"].tier::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:#e6fbff; border:2px solid #22d3ee; cursor:pointer; }
+  .tabbtn[data-active="true"] { background:#22d3ee; color:#06121a; }
+</style>
+</head>
+<body class="font-sans text-slate-200 antialiased">
+
+<!-- ============ PAGE HEADER BAND ============ -->
+<header class="grid-bg border-b border-hair">
+  <div class="max-w-[1500px] mx-auto px-6 py-7 flex flex-col md:flex-row md:items-end md:justify-between gap-5">
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 rounded-xl flex items-center justify-center glow-cyan bg-[#0c1420] shrink-0">
+        <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="#22d3ee" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl font-bold tracking-tight text-white">Mission Control</h1>
+          <span class="text-[10px] font-mono uppercase tracking-[0.2em] text-cyan border border-cyan/30 rounded px-2 py-0.5">Jarvis · v1 coding leg</span>
+        </div>
+        <p class="text-sm text-slate-400 mt-1">Voice-first AI ops cockpit — watch and steer the agent through a live observability feed across all your repos.</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 text-[11px] font-mono">
+      <a href="#desktop" class="px-3 py-1.5 rounded-md bg-cyan text-[#06121a] font-semibold">Desktop</a>
+      <a href="#iphone" class="px-3 py-1.5 rounded-md border border-hair text-slate-300 hover:border-cyan/40">iPhone · iOS</a>
+    </div>
+  </div>
+
+  <!-- FEATURE LEGEND -->
+  <div class="max-w-[1500px] mx-auto px-6 pb-6">
+    <div class="hairline rounded-xl bg-[#0b111c]/70 p-4">
+      <div class="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500 mb-3">Feature map — find each numbered callout in the layout below</div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-xs">
+        <div class="flex items-start gap-2"><span class="callout shrink-0">1</span><span class="text-slate-300">Voice conversation<br><span class="text-slate-500">push-to-talk · waveform</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">2</span><span class="text-slate-300">Observability feed<br><span class="text-slate-500">live agent timeline</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">3</span><span class="text-slate-300">State of my world<br><span class="text-slate-500">7-repo status grid</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">4</span><span class="text-slate-300">Capture &amp; triage<br><span class="text-slate-500">proposed task card</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">5</span><span class="text-slate-300">Action queue<br><span class="text-slate-500">confirm / reject</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">6</span><span class="text-slate-300">Model tier slider<br><span class="text-slate-500">Haiku · Sonnet · Opus</span></span></div>
+        <div class="flex items-start gap-2"><span class="callout shrink-0">7</span><span class="text-slate-300">Spend meter<br><span class="text-slate-500">today vs ceiling</span></span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1500px] mx-auto px-6 py-10 space-y-16">
+
+  <!-- ============================================================= -->
+  <!-- =============== DESKTOP VIEW ================================ -->
+  <!-- ============================================================= -->
+  <section id="desktop">
+    <div class="flex items-center gap-3 mb-4">
+      <h2 class="text-sm font-mono uppercase tracking-[0.25em] text-slate-400">Desktop</h2>
+      <div class="h-px flex-1 bg-hair"></div>
+      <span class="text-xs text-slate-500 font-mono">macOS · 1280px · Mac app</span>
+    </div>
+
+    <!-- BROWSER / APP WINDOW CHROME -->
+    <div class="rounded-2xl overflow-hidden hairline shadow-2xl bg-ink mx-auto" style="max-width:1280px;">
+      <!-- titlebar -->
+      <div class="flex items-center gap-2 px-4 h-11 bg-[#0c1118] border-b border-hair">
+        <div class="flex gap-2">
+          <span class="w-3 h-3 rounded-full bg-[#ff5f57]"></span>
+          <span class="w-3 h-3 rounded-full bg-[#febc2e]"></span>
+          <span class="w-3 h-3 rounded-full bg-[#28c840]"></span>
+        </div>
+        <div class="mx-auto flex items-center gap-2 px-3 h-6 rounded-md bg-[#0a0e14] hairline text-[11px] font-mono text-slate-400">
+          <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          jarvis.local / mission-control
+        </div>
+        <span class="text-[11px] font-mono text-slate-600">⌘K</span>
+      </div>
+
+      <!-- TOP STATUS BAR -->
+      <div class="grid-bg px-5 py-3 border-b border-hair flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-4">
+          <div class="relative inline-flex items-center gap-2 pl-1">
+            <span class="callout absolute -left-2 -top-3">1</span>
+          </div>
+          <!-- mic / listening -->
+          <div class="flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-lg bg-[#0c1626] glow-cyan">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan live-dot"></span>
+            <span class="text-[11px] font-mono font-semibold text-cyan uppercase tracking-wider">listening</span>
+            <div class="wave flex items-end gap-[3px] h-4 ml-1">
+              <span style="height:60%;animation-delay:0s"></span>
+              <span style="height:100%;animation-delay:.12s"></span>
+              <span style="height:45%;animation-delay:.24s"></span>
+              <span style="height:85%;animation-delay:.36s"></span>
+              <span style="height:55%;animation-delay:.18s"></span>
+              <span style="height:90%;animation-delay:.30s"></span>
+              <span style="height:40%;animation-delay:.42s"></span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+            <kbd class="px-1.5 py-0.5 rounded bg-[#0c1420] hairline text-slate-300">⌥ Space</kbd>
+            <span>push-to-talk</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- in-doubt badge -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <span class="text-[11px] font-mono font-semibold text-amber-300">in-doubt actions: 1</span>
+          </div>
+          <!-- model tier pill -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0c1420] hairline">
+            <span class="text-[10px] font-mono uppercase tracking-wider text-slate-500">tier</span>
+            <span class="text-[11px] font-mono font-semibold text-blue-300">Sonnet</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+          </div>
+          <!-- spend mini -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0c1420] hairline">
+            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+            <span class="text-[11px] font-mono text-slate-300"><span class="text-emerald-400">$2.14</span> / $10.00</span>
+          </div>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-cyan to-blue-500 flex items-center justify-center text-[11px] font-bold text-[#06121a]">AG</div>
+        </div>
+      </div>
+
+      <!-- ============ MAIN 3-COLUMN GRID ============ -->
+      <div class="bg-[#06080d] p-4 grid grid-cols-12 gap-4" style="min-height:760px;">
+
+        <!-- ===== LEFT COLUMN: PROJECT STATUS GRID (feature 3) ===== -->
+        <div class="col-span-3 flex flex-col gap-4">
+          <div class="hairline rounded-xl bg-panel flex flex-col overflow-hidden flex-1">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-hair">
+              <div class="flex items-center gap-2">
+                <span class="callout">3</span>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">State of My World</h3>
+              </div>
+              <span class="text-[10px] font-mono text-emerald-400">6/7 clean</span>
+            </div>
+            <div class="px-4 py-2.5 border-b border-hair grid grid-cols-3 gap-2 text-center">
+              <div><div class="text-lg font-mono font-bold text-white">7</div><div class="text-[9px] uppercase tracking-wider text-slate-500">repos</div></div>
+              <div><div class="text-lg font-mono font-bold text-amber-400">3</div><div class="text-[9px] uppercase tracking-wider text-slate-500">open PRs</div></div>
+              <div><div class="text-lg font-mono font-bold text-red-400">1</div><div class="text-[9px] uppercase tracking-wider text-slate-500">build fail</div></div>
+            </div>
+            <div class="overflow-y-auto flex-1 divide-y divide-hair/60">
+
+              <!-- repo: parentlogs (dirty) -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">parentlogs</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">dirty</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span>
+                  <span class="text-emerald-400">↑3</span><span class="text-slate-600">↓0</span>
+                  <span class="text-amber-300">2 PR</span>
+                  <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>deploy ok</span>
+                </div>
+                <div class="mt-1 text-[10px] text-amber-400/80 font-mono">⚠ uncommitted migration</div>
+              </div>
+
+              <!-- repo: life_os -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">life_os</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span><span class="text-slate-600">↑0 ↓0</span>
+                  <span class="text-slate-600">0 PR</span>
+                  <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>deploy ok</span>
+                </div>
+              </div>
+
+              <!-- repo: travel_ai (build fail) -->
+              <div class="px-4 py-2.5 bg-red-500/[0.04] hover:bg-red-500/[0.07]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">travel_ai</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ feat/maps</span><span class="text-emerald-400">↑1</span>
+                  <span class="text-slate-600">0 PR</span>
+                </div>
+                <div class="mt-1 text-[10px] text-red-400 font-mono inline-flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Netlify deploy failed · 3h ago
+                </div>
+              </div>
+
+              <!-- repo: hoa-community-platform -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">hoa-community-platform</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span><span class="text-slate-600">↓1</span>
+                  <span class="text-amber-300">1 PR</span>
+                  <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>deploy ok</span>
+                </div>
+              </div>
+
+              <!-- repo: community_portal -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">community_portal</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span><span class="text-slate-600">↑0 ↓0</span>
+                  <span class="text-slate-600">0 PR</span>
+                  <span class="text-slate-500">Expo · EAS ok</span>
+                </div>
+              </div>
+
+              <!-- repo: legal-ai-assistant -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">legal-ai-assistant</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span><span class="text-slate-600">↑0 ↓0</span>
+                  <span class="text-slate-600">0 PR</span>
+                  <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>deploy ok</span>
+                </div>
+              </div>
+
+              <!-- repo: last_mile -->
+              <div class="px-4 py-2.5 hover:bg-cyan/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] font-semibold text-white">last_mile</span>
+                  <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">clean</span>
+                </div>
+                <div class="mt-1 flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap">
+                  <span class="text-cyan">⎇ main</span><span class="text-slate-600">↑0 ↓0</span>
+                  <span class="text-slate-600">0 PR</span>
+                  <span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>deploy ok</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CENTER COLUMN: VOICE + OBSERVABILITY FEED (features 1,2,4) ===== -->
+        <div class="col-span-6 flex flex-col gap-4">
+
+          <!-- Voice exchange strip (feature 1) -->
+          <div class="hairline rounded-xl bg-panel overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2.5 border-b border-hair">
+              <div class="flex items-center gap-2">
+                <span class="callout">1</span>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Voice Conversation</h3>
+              </div>
+              <span class="text-[10px] font-mono text-slate-500">streaming STT · spoken reply</span>
+            </div>
+            <div class="p-4 space-y-3">
+              <!-- user utterance -->
+              <div class="flex items-start gap-3">
+                <span class="text-[9px] font-mono uppercase tracking-wider text-slate-500 mt-1.5 w-10 shrink-0">you</span>
+                <div class="flex-1 rounded-lg bg-[#0c1420] hairline px-3 py-2">
+                  <p class="text-sm text-slate-200">"What's the state of my projects?"</p>
+                  <div class="mt-1.5 flex items-center gap-1 text-cyan">
+                    <span class="wave flex items-end gap-[2px] h-3">
+                      <span style="height:50%;animation-delay:0s"></span><span style="height:100%;animation-delay:.1s"></span>
+                      <span style="height:40%;animation-delay:.2s"></span><span style="height:80%;animation-delay:.15s"></span>
+                      <span style="height:60%;animation-delay:.25s"></span>
+                    </span>
+                    <span class="text-[9px] font-mono text-slate-500 ml-1">transcribed · 1.2s audio</span>
+                  </div>
+                </div>
+              </div>
+              <!-- jarvis reply -->
+              <div class="flex items-start gap-3">
+                <span class="text-[9px] font-mono uppercase tracking-wider text-cyan mt-1.5 w-10 shrink-0">jarvis</span>
+                <div class="flex-1 rounded-lg bg-cyan/[0.06] border border-cyan/20 px-3 py-2">
+                  <p class="text-sm text-slate-100 leading-relaxed">"6 of 7 clean. <span class="text-white font-medium">parentlogs</span> has 2 open PRs and an uncommitted migration. <span class="text-white font-medium">travel_ai</span>'s last Netlify deploy failed 3 hours ago. 1 in-doubt action from earlier."</p>
+                  <div class="mt-1.5 flex items-center gap-2 text-[9px] font-mono text-slate-500">
+                    <svg viewBox="0 0 24 24" class="w-3 h-3 text-cyan" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+                    spoken aloud · 320 wpm · Sonnet
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- THE HERO: Observability feed (feature 2) -->
+          <div class="hairline rounded-xl bg-panel flex flex-col overflow-hidden flex-1 glow-cyan">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-hair">
+              <div class="flex items-center gap-2">
+                <span class="callout">2</span>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-white">Live Observability Feed</h3>
+                <span class="w-2 h-2 rounded-full bg-cyan live-dot ml-1"></span>
+              </div>
+              <div class="flex items-center gap-2 text-[10px] font-mono">
+                <span class="px-2 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-hair">info</span>
+                <span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/30">tool</span>
+                <span class="px-2 py-0.5 rounded bg-red-500/10 text-red-300 border border-red-500/30">error</span>
+              </div>
+            </div>
+
+            <!-- column headers -->
+            <div class="grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-1.5 border-b border-hair text-[9px] font-mono uppercase tracking-wider text-slate-600">
+              <span>time</span><span>event</span><span>detail</span><span class="text-right">latency</span>
+            </div>
+
+            <div class="overflow-y-auto flex-1 font-mono text-[11px] divide-y divide-hair/40">
+              <!-- utterance -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:02</span>
+                <span class="text-slate-300">utterance</span>
+                <span class="text-slate-200 truncate">"what's the state of my projects?"</span>
+                <span class="text-right text-slate-500">—</span>
+              </div>
+              <!-- stt_result -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:03</span>
+                <span class="text-cyan">stt_result</span>
+                <span class="text-slate-300 truncate">confidence 0.97 · whisper-stream</span>
+                <span class="text-right text-emerald-400">188ms</span>
+              </div>
+              <!-- llm_request -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:03</span>
+                <span class="text-blue-300">llm_request</span>
+                <span class="text-slate-300 truncate">claude-sonnet · 2,140 tok · tools=[git,netlify]</span>
+                <span class="text-right text-slate-500">—</span>
+              </div>
+              <!-- tool_call git -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center bg-blue-500/[0.04]">
+                <span class="text-slate-500">09:41:04</span>
+                <span class="text-blue-300">tool_call</span>
+                <span class="text-slate-200 truncate">git.status(repos=7)</span>
+                <span class="text-right text-emerald-400">412ms</span>
+              </div>
+              <!-- tool_result -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:04</span>
+                <span class="text-blue-300">tool_result</span>
+                <span class="text-slate-300 truncate">6 clean · parentlogs dirty (1 migration)</span>
+                <span class="text-right text-emerald-400">9ms</span>
+              </div>
+              <!-- tool_call netlify -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center bg-blue-500/[0.04]">
+                <span class="text-slate-500">09:41:05</span>
+                <span class="text-blue-300">tool_call</span>
+                <span class="text-slate-200 truncate">netlify.deploys(latest)</span>
+                <span class="text-right text-amber-400">734ms</span>
+              </div>
+              <!-- error -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center bg-red-500/[0.06]">
+                <span class="text-slate-500">09:41:06</span>
+                <span class="text-red-300">error</span>
+                <span class="text-red-200 truncate">travel_ai deploy = failed (exit 1, build step)</span>
+                <span class="text-right text-red-300">3h ago</span>
+              </div>
+              <!-- reconcile -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:06</span>
+                <span class="text-amber-300">reconcile</span>
+                <span class="text-slate-300 truncate">flagged 1 in-doubt action → awaiting_confirm</span>
+                <span class="text-right text-emerald-400">22ms</span>
+              </div>
+              <!-- llm_response -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:41:07</span>
+                <span class="text-blue-300">llm_response</span>
+                <span class="text-slate-300 truncate">summary · 84 tok · spoken</span>
+                <span class="text-right text-emerald-400">901ms</span>
+              </div>
+              <!-- second exchange: capture -->
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:42:18</span>
+                <span class="text-slate-300">utterance</span>
+                <span class="text-slate-200 truncate">"file a bug — the stripe webhook in hoa isn't idempotent"</span>
+                <span class="text-right text-slate-500">—</span>
+              </div>
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:42:19</span>
+                <span class="text-cyan">stt_result</span>
+                <span class="text-slate-300 truncate">confidence 0.94</span>
+                <span class="text-right text-emerald-400">203ms</span>
+              </div>
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center bg-blue-500/[0.04]">
+                <span class="text-slate-500">09:42:20</span>
+                <span class="text-blue-300">tool_call</span>
+                <span class="text-slate-200 truncate">triage.classify(text)</span>
+                <span class="text-right text-emerald-400">388ms</span>
+              </div>
+              <div class="feed-row grid grid-cols-[68px_92px_1fr_56px] gap-2 px-4 py-2 items-center">
+                <span class="text-slate-500">09:42:20</span>
+                <span class="text-blue-300">tool_result</span>
+                <span class="text-slate-300 truncate">project=hoa · category=bug · priority=high</span>
+                <span class="text-right text-emerald-400">6ms</span>
+              </div>
+            </div>
+
+            <!-- Capture proposal (feature 4) docked to feed bottom -->
+            <div class="border-t border-hair p-4 bg-[#0c1322]">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="callout">4</span>
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Proposed Task — confirm to file</h4>
+                <span class="ml-auto text-[10px] font-mono text-slate-500">from voice capture · 09:42:21</span>
+              </div>
+              <div class="rounded-lg border border-cyan/25 bg-cyan/[0.04] p-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="text-sm font-semibold text-white">Stripe webhook not idempotent</div>
+                    <div class="mt-1.5 flex items-center gap-1.5 flex-wrap text-[10px] font-mono">
+                      <span class="px-2 py-0.5 rounded bg-[#0c1420] hairline text-slate-300">project: <span class="text-cyan">hoa-community-platform</span></span>
+                      <span class="px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">category: bug</span>
+                      <span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">priority: high</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button class="px-3 py-1.5 rounded-md bg-cyan text-[#06121a] text-xs font-semibold hover:brightness-110">Confirm &amp; file</button>
+                    <button class="px-3 py-1.5 rounded-md hairline text-slate-300 text-xs hover:border-slate-500">Edit</button>
+                    <button class="px-3 py-1.5 rounded-md hairline text-slate-400 text-xs hover:text-red-300 hover:border-red-500/40">Reject</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== RIGHT COLUMN: ACTION QUEUE + SPEND + TIER (features 5,6,7) ===== -->
+        <div class="col-span-3 flex flex-col gap-4">
+
+          <!-- Action queue (feature 5) -->
+          <div class="hairline rounded-xl bg-panel overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-hair">
+              <div class="flex items-center gap-2">
+                <span class="callout">5</span>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Action Queue</h3>
+              </div>
+              <span class="text-[10px] font-mono text-slate-500">4 actions</span>
+            </div>
+            <div class="divide-y divide-hair/60">
+              <!-- done -->
+              <div class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] text-slate-200">File task: Stripe webhook</span>
+                  <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">done</span>
+                </div>
+                <div class="mt-1 text-[10px] font-mono text-slate-500">capture → backlog · hoa · 09:42:24</div>
+              </div>
+              <!-- pending / reconciling -->
+              <div class="px-4 py-3 bg-blue-500/[0.03]">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] text-slate-200">Re-run travel_ai deploy</span>
+                  <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-400 live-dot"></span>pending</span>
+                </div>
+                <div class="mt-1 text-[10px] font-mono text-slate-500">reconciling Netlify state…</div>
+              </div>
+              <!-- failed -->
+              <div class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] text-slate-200">Push feat/maps → origin</span>
+                  <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">failed</span>
+                </div>
+                <div class="mt-1 text-[10px] font-mono text-red-400/80">rejected by hook · lint errors</div>
+              </div>
+              <!-- awaiting_confirm (irreversible) -->
+              <div class="px-4 py-3 bg-amber-500/[0.04] border-l-2 border-amber-500/60">
+                <div class="flex items-center justify-between">
+                  <span class="text-[13px] text-slate-100 font-medium">Mark task done: "migrate RLS"</span>
+                  <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">awaiting_confirm</span>
+                </div>
+                <div class="mt-1 text-[10px] font-mono text-amber-300/80 inline-flex items-center gap-1">
+                  <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                  irreversible — needs your confirmation
+                </div>
+                <div class="mt-2.5 flex items-center gap-2">
+                  <button class="flex-1 px-3 py-1.5 rounded-md bg-emerald-500/90 text-[#04140c] text-xs font-semibold hover:brightness-110">Confirm</button>
+                  <button class="flex-1 px-3 py-1.5 rounded-md hairline text-slate-300 text-xs hover:text-red-300 hover:border-red-500/40">Reject</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Model tier slider (feature 6) -->
+          <div class="hairline rounded-xl bg-panel overflow-hidden">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-hair">
+              <span class="callout">6</span>
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Model Tier</h3>
+              <span id="tierLabel" class="ml-auto text-[11px] font-mono font-semibold text-blue-300">Sonnet</span>
+            </div>
+            <div class="p-4">
+              <input id="tierRange" type="range" class="tier w-full" min="0" max="2" step="1" value="1" oninput="setTier(this.value)" />
+              <div class="flex justify-between mt-2 text-[10px] font-mono">
+                <span class="text-slate-400">Haiku<br><span class="text-slate-600">cheap</span></span>
+                <span class="text-blue-300 text-center">Sonnet<br><span class="text-slate-600">moderate</span></span>
+                <span class="text-slate-400 text-right">Opus<br><span class="text-slate-600">expensive</span></span>
+              </div>
+              <!-- bump prompt -->
+              <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-2.5 flex items-start gap-2">
+                <svg viewBox="0 0 24 24" class="w-4 h-4 text-amber-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <div class="flex-1">
+                  <p class="text-[11px] text-amber-200">This looks hard — refactoring the Stripe handler. <span class="text-amber-300 font-medium">Bump to Opus?</span></p>
+                  <div class="mt-2 flex gap-2">
+                    <button onclick="setTier(2)" class="px-2.5 py-1 rounded bg-amber-400 text-[#1a1200] text-[10px] font-semibold">Bump tier</button>
+                    <button class="px-2.5 py-1 rounded hairline text-slate-400 text-[10px]">Stay on Sonnet</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Spend meter (feature 7) -->
+          <div class="hairline rounded-xl bg-panel overflow-hidden flex-1">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-hair">
+              <span class="callout">7</span>
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Spend Meter</h3>
+              <span class="ml-auto text-[10px] font-mono text-slate-500">BYOK · today</span>
+            </div>
+            <div class="p-4">
+              <div class="flex items-end justify-between">
+                <div class="font-mono"><span class="text-2xl font-bold text-emerald-400">$2.14</span><span class="text-slate-500 text-sm"> / $10.00</span></div>
+                <span class="text-[10px] font-mono text-slate-500">21% of ceiling</span>
+              </div>
+              <div class="mt-2 h-2.5 rounded-full bg-[#0c1420] overflow-hidden">
+                <div class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan" style="width:21%"></div>
+              </div>
+              <!-- per-model breakdown -->
+              <div class="mt-4 space-y-2.5">
+                <div>
+                  <div class="flex justify-between text-[10px] font-mono mb-1"><span class="text-slate-300">Sonnet</span><span class="text-slate-400">$1.62</span></div>
+                  <div class="h-1.5 rounded-full bg-[#0c1420] overflow-hidden"><div class="h-full bg-blue-400" style="width:76%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-[10px] font-mono mb-1"><span class="text-slate-300">Opus</span><span class="text-slate-400">$0.41</span></div>
+                  <div class="h-1.5 rounded-full bg-[#0c1420] overflow-hidden"><div class="h-full bg-violet-400" style="width:19%"></div></div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-[10px] font-mono mb-1"><span class="text-slate-300">Haiku</span><span class="text-slate-400">$0.11</span></div>
+                  <div class="h-1.5 rounded-full bg-[#0c1420] overflow-hidden"><div class="h-full bg-cyan" style="width:5%"></div></div>
+                </div>
+              </div>
+              <div class="mt-4 pt-3 border-t border-hair grid grid-cols-2 gap-3 text-center font-mono">
+                <div><div class="text-sm font-bold text-white">38</div><div class="text-[9px] uppercase tracking-wider text-slate-500">requests</div></div>
+                <div><div class="text-sm font-bold text-white">214k</div><div class="text-[9px] uppercase tracking-wider text-slate-500">tokens</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= -->
+  <!-- =============== IPHONE VIEW ================================= -->
+  <!-- ============================================================= -->
+  <section id="iphone">
+    <div class="flex items-center gap-3 mb-4">
+      <h2 class="text-sm font-mono uppercase tracking-[0.25em] text-slate-400">iPhone — iOS</h2>
+      <div class="h-px flex-1 bg-hair"></div>
+      <span class="text-xs text-slate-500 font-mono">390px · native app · single-column command center</span>
+    </div>
+
+    <div class="flex justify-center">
+      <!-- iPhone frame -->
+      <div class="relative" style="width:390px;">
+        <div class="rounded-[3.2rem] p-[3px] bg-gradient-to-b from-[#2a2f3a] to-[#10151d] shadow-2xl">
+          <div class="rounded-[3rem] bg-black p-[10px]">
+            <div class="relative rounded-[2.4rem] overflow-hidden bg-ink" style="height:844px;">
+
+              <!-- iOS status bar -->
+              <div class="absolute top-0 inset-x-0 z-30 h-12 flex items-center justify-between px-7 pt-2 text-white text-[13px] font-semibold">
+                <span class="font-sans">9:41</span>
+                <div class="flex items-center gap-1.5">
+                  <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor"><path d="M2 17h2v3H2zM6 13h2v7H6zM10 9h2v11h-2zM14 5h2v15h-2zM18 2h2v18h-2z"/></svg>
+                  <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor"><path d="M12 4C7 4 2.7 6 0 9l12 14L24 9c-2.7-3-7-5-12-5z"/></svg>
+                  <svg viewBox="0 0 28 24" class="w-6 h-4" fill="none"><rect x="1" y="6" width="22" height="12" rx="3" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="8" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="24" y="9.5" width="2" height="5" rx="1" fill="currentColor"/></svg>
+                </div>
+              </div>
+
+              <!-- Dynamic Island -->
+              <div class="absolute top-2.5 left-1/2 -translate-x-1/2 z-40 w-[122px] h-[34px] bg-black rounded-full flex items-center justify-between px-3">
+                <span class="w-2 h-2 rounded-full bg-cyan live-dot"></span>
+                <span class="text-[9px] font-mono text-cyan uppercase tracking-wider">listening</span>
+                <span class="w-3 h-3 rounded-full bg-[#0c1420]"></span>
+              </div>
+
+              <!-- App content scroll area -->
+              <div class="absolute inset-0 pt-14 pb-28 overflow-y-auto grid-bg">
+                <div class="px-3.5 space-y-3 pb-2">
+
+                  <!-- Top status chips -->
+                  <div class="flex items-center justify-between pt-1">
+                    <div>
+                      <div class="text-base font-bold text-white">Mission Control</div>
+                      <div class="text-[10px] font-mono text-slate-500">Jarvis · 7 repos</div>
+                    </div>
+                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-cyan to-blue-500 flex items-center justify-center text-[11px] font-bold text-[#06121a]">AG</div>
+                  </div>
+
+                  <!-- status chip row -->
+                  <div class="flex items-center gap-2 overflow-x-auto pb-1 text-[10px] font-mono">
+                    <span class="shrink-0 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">6/7 clean</span>
+                    <span class="shrink-0 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">in-doubt: 1</span>
+                    <span class="shrink-0 px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">tier: Sonnet</span>
+                    <span class="shrink-0 px-2.5 py-1 rounded-full bg-[#0c1420] hairline text-emerald-400">$2.14/$10</span>
+                  </div>
+
+                  <!-- Voice reply card (feature 1) -->
+                  <div class="relative hairline rounded-2xl bg-cyan/[0.05] border-cyan/20 p-3">
+                    <span class="callout absolute -left-1.5 -top-1.5">1</span>
+                    <div class="text-[10px] font-mono text-slate-500 mb-1">you · "what's the state of my projects?"</div>
+                    <p class="text-[13px] text-slate-100 leading-relaxed">"6 of 7 clean. <span class="text-white font-medium">parentlogs</span> has 2 open PRs and an uncommitted migration. <span class="text-white font-medium">travel_ai</span>'s last Netlify deploy failed 3h ago. 1 in-doubt action."</p>
+                    <div class="mt-1.5 flex items-center gap-1.5 text-[9px] font-mono text-slate-500">
+                      <svg viewBox="0 0 24 24" class="w-3 h-3 text-cyan" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/></svg> spoken aloud
+                    </div>
+                  </div>
+
+                  <!-- Observability feed (feature 2) — prominent -->
+                  <div class="relative hairline rounded-2xl bg-panel overflow-hidden glow-cyan">
+                    <span class="callout absolute -left-1.5 -top-1.5 z-10">2</span>
+                    <div class="flex items-center justify-between px-3 py-2.5 border-b border-hair">
+                      <div class="flex items-center gap-1.5">
+                        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-white">Live Feed</h3>
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan live-dot"></span>
+                      </div>
+                      <div class="flex items-center gap-1 text-[8px] font-mono">
+                        <span class="px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-400">info</span>
+                        <span class="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300">tool</span>
+                        <span class="px-1.5 py-0.5 rounded bg-red-500/10 text-red-300">error</span>
+                      </div>
+                    </div>
+                    <div class="font-mono text-[10px] divide-y divide-hair/40">
+                      <div class="flex items-center gap-2 px-3 py-1.5"><span class="text-slate-600 w-14 shrink-0">09:41:03</span><span class="text-cyan w-16 shrink-0">stt_result</span><span class="text-slate-400 flex-1 truncate">conf 0.97</span><span class="text-emerald-400">188ms</span></div>
+                      <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-500/[0.04]"><span class="text-slate-600 w-14 shrink-0">09:41:04</span><span class="text-blue-300 w-16 shrink-0">tool_call</span><span class="text-slate-300 flex-1 truncate">git.status(7)</span><span class="text-emerald-400">412ms</span></div>
+                      <div class="flex items-center gap-2 px-3 py-1.5"><span class="text-slate-600 w-14 shrink-0">09:41:04</span><span class="text-blue-300 w-16 shrink-0">tool_res</span><span class="text-slate-400 flex-1 truncate">6 clean · 1 dirty</span><span class="text-emerald-400">9ms</span></div>
+                      <div class="flex items-center gap-2 px-3 py-1.5 bg-red-500/[0.06]"><span class="text-slate-600 w-14 shrink-0">09:41:06</span><span class="text-red-300 w-16 shrink-0">error</span><span class="text-red-200 flex-1 truncate">travel_ai deploy failed</span><span class="text-red-300">3h</span></div>
+                      <div class="flex items-center gap-2 px-3 py-1.5"><span class="text-slate-600 w-14 shrink-0">09:41:06</span><span class="text-amber-300 w-16 shrink-0">reconcile</span><span class="text-slate-400 flex-1 truncate">1 in-doubt → confirm</span><span class="text-emerald-400">22ms</span></div>
+                      <div class="flex items-center gap-2 px-3 py-1.5"><span class="text-slate-600 w-14 shrink-0">09:41:07</span><span class="text-blue-300 w-16 shrink-0">llm_resp</span><span class="text-slate-400 flex-1 truncate">summary · spoken</span><span class="text-emerald-400">901ms</span></div>
+                    </div>
+                  </div>
+
+                  <!-- State of world condensed (feature 3) -->
+                  <div class="relative hairline rounded-2xl bg-panel overflow-hidden">
+                    <span class="callout absolute -left-1.5 -top-1.5 z-10">3</span>
+                    <div class="px-3 py-2.5 border-b border-hair flex items-center justify-between">
+                      <h3 class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">State of My World</h3>
+                      <span class="text-[9px] font-mono text-emerald-400">6/7 clean</span>
+                    </div>
+                    <div class="divide-y divide-hair/50 text-[11px]">
+                      <div class="flex items-center justify-between px-3 py-2">
+                        <span class="font-semibold text-white">parentlogs</span>
+                        <span class="flex items-center gap-1.5 font-mono text-[9px]"><span class="text-emerald-400">↑3</span><span class="text-amber-300">2 PR</span><span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">dirty</span></span>
+                      </div>
+                      <div class="flex items-center justify-between px-3 py-2 bg-red-500/[0.04]">
+                        <span class="font-semibold text-white">travel_ai</span>
+                        <span class="flex items-center gap-1.5 font-mono text-[9px]"><span class="text-red-400">deploy fail</span><span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">clean</span></span>
+                      </div>
+                      <div class="flex items-center justify-between px-3 py-2">
+                        <span class="font-semibold text-white">hoa-community-platform</span>
+                        <span class="flex items-center gap-1.5 font-mono text-[9px]"><span class="text-amber-300">1 PR</span><span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">clean</span></span>
+                      </div>
+                      <div class="flex items-center justify-between px-3 py-2 text-slate-400">
+                        <span>life_os · community_portal · legal-ai · last_mile</span>
+                        <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono text-[9px]">all clean</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Capture proposal (feature 4) -->
+                  <div class="relative hairline rounded-2xl border-cyan/25 bg-cyan/[0.04] p-3">
+                    <span class="callout absolute -left-1.5 -top-1.5">4</span>
+                    <div class="text-[9px] font-mono text-slate-500 mb-1.5">captured from voice → proposed task</div>
+                    <div class="text-[13px] font-semibold text-white">Stripe webhook not idempotent</div>
+                    <div class="mt-1.5 flex items-center gap-1 flex-wrap text-[9px] font-mono">
+                      <span class="px-1.5 py-0.5 rounded bg-[#0c1420] hairline text-cyan">hoa-community-platform</span>
+                      <span class="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300">bug</span>
+                      <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300">high</span>
+                    </div>
+                    <div class="mt-2.5 flex gap-2">
+                      <button class="flex-1 px-3 py-1.5 rounded-lg bg-cyan text-[#06121a] text-[11px] font-semibold">Confirm &amp; file</button>
+                      <button class="px-3 py-1.5 rounded-lg hairline text-slate-400 text-[11px]">Reject</button>
+                    </div>
+                  </div>
+
+                  <!-- Action queue (feature 5) -->
+                  <div class="relative hairline rounded-2xl bg-panel overflow-hidden">
+                    <span class="callout absolute -left-1.5 -top-1.5 z-10">5</span>
+                    <div class="px-3 py-2.5 border-b border-hair flex items-center justify-between">
+                      <h3 class="text-[11px] font-semibold uppercase tracking-wider text-slate-300">Action Queue</h3>
+                      <span class="text-[9px] font-mono text-slate-500">4</span>
+                    </div>
+                    <div class="divide-y divide-hair/50 text-[11px]">
+                      <div class="flex items-center justify-between px-3 py-2"><span class="text-slate-200">File task: Stripe webhook</span><span class="text-[8px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">done</span></div>
+                      <div class="flex items-center justify-between px-3 py-2 bg-blue-500/[0.03]"><span class="text-slate-200">Re-run travel_ai deploy</span><span class="text-[8px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300">pending</span></div>
+                      <div class="flex items-center justify-between px-3 py-2"><span class="text-slate-200">Push feat/maps</span><span class="text-[8px] font-mono px-1.5 py-0.5 rounded bg-red-500/15 text-red-300">failed</span></div>
+                      <div class="px-3 py-2 bg-amber-500/[0.05] border-l-2 border-amber-500/60">
+                        <div class="flex items-center justify-between"><span class="text-slate-100 font-medium">Mark task done: "migrate RLS"</span><span class="text-[8px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 shrink-0 ml-2">confirm</span></div>
+                        <div class="mt-2 flex gap-2">
+                          <button class="flex-1 px-2.5 py-1 rounded-md bg-emerald-500/90 text-[#04140c] text-[10px] font-semibold">Confirm</button>
+                          <button class="flex-1 px-2.5 py-1 rounded-md hairline text-slate-400 text-[10px]">Reject</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Tier + Spend (features 6,7) -->
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="relative hairline rounded-2xl bg-panel p-3">
+                      <span class="callout absolute -left-1.5 -top-1.5">6</span>
+                      <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-300 mb-2">Tier</div>
+                      <input type="range" class="tier w-full" min="0" max="2" step="1" value="1" oninput="document.getElementById('mtier').textContent=['Haiku','Sonnet','Opus'][this.value]" />
+                      <div class="flex justify-between mt-1.5 text-[8px] font-mono text-slate-500"><span>cheap</span><span>mod</span><span>exp</span></div>
+                      <div class="mt-1 text-center text-[11px] font-mono font-semibold text-blue-300"><span id="mtier">Sonnet</span></div>
+                    </div>
+                    <div class="relative hairline rounded-2xl bg-panel p-3">
+                      <span class="callout absolute -left-1.5 -top-1.5">7</span>
+                      <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-300 mb-1">Spend</div>
+                      <div class="font-mono"><span class="text-base font-bold text-emerald-400">$2.14</span><span class="text-slate-500 text-[10px]">/$10</span></div>
+                      <div class="mt-1.5 h-2 rounded-full bg-[#0c1420] overflow-hidden"><div class="h-full bg-gradient-to-r from-emerald-400 to-cyan" style="width:21%"></div></div>
+                      <div class="mt-2 space-y-1 text-[9px] font-mono">
+                        <div class="flex justify-between"><span class="text-blue-300">Sonnet</span><span class="text-slate-400">$1.62</span></div>
+                        <div class="flex justify-between"><span class="text-violet-300">Opus</span><span class="text-slate-400">$0.41</span></div>
+                        <div class="flex justify-between"><span class="text-cyan">Haiku</span><span class="text-slate-400">$0.11</span></div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Big push-to-talk mic (feature 1) — fixed bottom -->
+              <div class="absolute bottom-0 inset-x-0 z-30 pt-6 pb-7 bg-gradient-to-t from-ink via-ink/95 to-transparent">
+                <div class="flex flex-col items-center">
+                  <div class="wave flex items-end gap-[3px] h-5 mb-3">
+                    <span style="height:40%;animation-delay:0s"></span><span style="height:90%;animation-delay:.12s"></span>
+                    <span style="height:55%;animation-delay:.24s"></span><span style="height:100%;animation-delay:.36s"></span>
+                    <span style="height:65%;animation-delay:.18s"></span><span style="height:85%;animation-delay:.3s"></span>
+                    <span style="height:45%;animation-delay:.42s"></span>
+                  </div>
+                  <button class="relative w-[68px] h-[68px] rounded-full bg-cyan flex items-center justify-center glow-cyan active:scale-95 transition">
+                    <span class="absolute inset-0 rounded-full bg-cyan/40 animate-ping"></span>
+                    <svg viewBox="0 0 24 24" class="w-7 h-7 relative z-10 text-[#06121a]" fill="currentColor"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M19 11a7 7 0 01-14 0M12 18v3"/></svg>
+                  </button>
+                  <span class="mt-2 text-[10px] font-mono text-slate-500">hold to talk · release to send</span>
+                </div>
+              </div>
+
+              <!-- iOS home indicator -->
+              <div class="absolute bottom-1.5 left-1/2 -translate-x-1/2 z-40 w-32 h-1 rounded-full bg-white/40"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-[11px] font-mono text-slate-600 pt-4 pb-2">
+    Jarvis — Mission Control · static mockup · voice-first AI ops cockpit · BYOK
+  </footer>
+</main>
+
+<script>
+  const TIERS = ['Haiku','Sonnet','Opus'];
+  const TIER_COLORS = ['text-cyan','text-blue-300','text-violet-300'];
+  function setTier(v){
+    v = Number(v);
+    const label = document.getElementById('tierLabel');
+    const range = document.getElementById('tierRange');
+    if(range) range.value = v;
+    if(label){
+      label.textContent = TIERS[v];
+      label.className = 'ml-auto text-[11px] font-mono font-semibold ' + TIER_COLORS[v];
+    }
+  }
+</script>
+</body>
+</html>
