@@ -12,6 +12,7 @@ instead of pending until confirm_action() supplies a matching token.
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,8 @@ from nala.spend import SpendCeilingExceeded, check_ceiling
 # simulate a hard process kill at a specific point in the two-phase commit.
 # No-op in production.
 _crash_hook = None
+
+_HEX_TOKEN = re.compile(r"^[0-9a-f]+$")
 
 
 @dataclass
@@ -84,58 +87,95 @@ def execute_action(
 
     if existing:
         conn.close()
-        if existing["status"] in ("done", "failed", "rejected"):
-            return _replay(existing, session_id, turn_id, data_dir)
-        if existing["status"] == "awaiting_confirm":
-            return ActionResult(
-                status="awaiting_confirm",
-                message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
-            )
-        return ActionResult(
-            status="pending",
-            message="this action is already in flight (in-doubt); the reconciler will resolve it",
-        )
+        return _resolve_row(existing, key, session_id, turn_id, data_dir)
+
+    # Test-only injection point: a concurrent same-key caller can commit its
+    # own row in this exact window (after our SELECT above, before our INSERT
+    # below). _checkpoint lets tests simulate that race deterministically.
+    _checkpoint("before_insert")
 
     now = datetime.now(timezone.utc).isoformat()
-    if reversibility == "irreversible":
-        conn.execute(
-            "INSERT OR IGNORE INTO processed_actions "
-            "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (key, turn_id, action_type, reversibility, json.dumps(normalized_args), "awaiting_confirm", now),
-        )
-        conn.commit()
+    insert_status = "awaiting_confirm" if reversibility == "irreversible" else "pending"
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO processed_actions "
+        "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (key, turn_id, action_type, reversibility, json.dumps(normalized_args), insert_status, now),
+    )
+    conn.commit()
+    won_insert = cur.rowcount == 1
+
+    if not won_insert:
+        # A concurrent caller with the same key already committed a row first —
+        # resolve against whatever it landed as instead of dispatching twice.
+        row = conn.execute("SELECT * FROM processed_actions WHERE idempotency_key = ?", (key,)).fetchone()
         conn.close()
+        return _resolve_row(row, key, session_id, turn_id, data_dir)
+
+    conn.close()
+
+    if insert_status == "awaiting_confirm":
         return ActionResult(
             status="awaiting_confirm",
             message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
         )
 
-    conn.execute(
-        "INSERT OR IGNORE INTO processed_actions "
-        "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (key, turn_id, action_type, reversibility, json.dumps(normalized_args), "pending", now),
-    )
-    conn.commit()
-    conn.close()
-
     return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
 
 
+def _resolve_row(row, key: str, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
+    """Given an existing processed_actions row (whether found on the initial
+    lookup or discovered after losing an INSERT OR IGNORE race), report its
+    status without ever dispatching a second side effect."""
+    if row["status"] in ("done", "failed", "rejected"):
+        return _replay(row, session_id, turn_id, data_dir)
+    if row["status"] == "awaiting_confirm":
+        return ActionResult(
+            status="awaiting_confirm",
+            message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
+        )
+    return ActionResult(
+        status="pending",
+        message="this action is already in flight (in-doubt); the reconciler will resolve it",
+    )
+
+
 def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+    token = token.strip().lower()
+
+    if not token or not _HEX_TOKEN.match(token):
+        events.log_event(
+            session_id, turn_id, "rejected",
+            {"reason": "confirm token must be hex characters only", "token": token},
+            level="error", data_dir=data_dir,
+        )
+        return ActionResult(status="rejected", message=f"invalid confirm token '{token}' — expected a hex idempotency-key prefix")
+
     conn = connect(data_dir)
     ensure_processed_actions(conn)
-    row = conn.execute(
-        "SELECT * FROM processed_actions WHERE status='awaiting_confirm' AND idempotency_key LIKE ?",
-        (f"{token}%",),
-    ).fetchone()
+    # Match in Python against the literal token — never SQL LIKE on raw user
+    # input, since '%'/'_' are LIKE wildcards that would match any row.
+    candidates = conn.execute("SELECT * FROM processed_actions WHERE status='awaiting_confirm'").fetchall()
+    matches = [r for r in candidates if r["idempotency_key"].startswith(token)]
 
-    if row is None:
+    if not matches:
         conn.close()
         events.log_event(session_id, turn_id, "rejected", {"reason": "no pending confirmation matches token", "token": token}, level="error", data_dir=data_dir)
         return ActionResult(status="rejected", message=f"no pending confirmation matches '{token}'")
 
+    if len(matches) > 1:
+        conn.close()
+        events.log_event(
+            session_id, turn_id, "rejected",
+            {"reason": "ambiguous confirm token", "token": token, "match_count": len(matches)},
+            level="error", data_dir=data_dir,
+        )
+        return ActionResult(
+            status="rejected",
+            message=f"ambiguous token '{token}' matches {len(matches)} pending confirmations — provide more characters",
+        )
+
+    row = matches[0]
     key = row["idempotency_key"]
     action_type = row["action_type"]
     normalized_args = json.loads(row["args_json"])
@@ -222,17 +262,28 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
         reconcile_error = str(exc)
 
     events.log_event(session_id, turn_id, "tool_call", {"action_type": "report_status"}, data_dir=data_dir)
-    with tools.dispatching():
-        repos = tools.TOOLS["report_status"]()
-    events.log_event(session_id, turn_id, "tool_result", {"action_type": "report_status"}, data_dir=data_dir)
+
+    repos_error = None
+    repos: list = []
+    try:
+        with loud_failure(session_id, turn_id, "report_status dispatch", data_dir):
+            with tools.dispatching():
+                repos = tools.TOOLS["report_status"]()
+    except Exception as exc:
+        repos_error = str(exc)
+
+    events.log_event(session_id, turn_id, "tool_result", {"action_type": "report_status", "error": repos_error}, data_dir=data_dir)
 
     lines = []
-    for r in repos:
-        if "error" in r:
-            lines.append(f"{r['repo']}: {r['error']}")
-            continue
-        flags = "(dirty)" if r["dirty"] else ""
-        lines.append(f"{r['repo']}: {r['branch']} {flags}".rstrip())
+    if repos_error:
+        lines.append(f"report_status degraded: {repos_error}")
+    else:
+        for r in repos:
+            if "error" in r:
+                lines.append(f"{r['repo']}: {r['error']}")
+                continue
+            flags = "(dirty)" if r["dirty"] else ""
+            lines.append(f"{r['repo']}: {r['branch']} {flags}".rstrip())
 
     in_doubt = reconciler.in_doubt_count(data_dir)
     if reconcile_error:
@@ -240,4 +291,5 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
     else:
         lines.append(f"in-doubt actions: {in_doubt}")
 
-    return ActionResult(status="done", message="\n".join(lines), data={"repos": repos, "in_doubt_count": in_doubt})
+    status = "failed" if repos_error else "done"
+    return ActionResult(status=status, message="\n".join(lines), data={"repos": repos, "in_doubt_count": in_doubt})

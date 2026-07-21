@@ -11,8 +11,8 @@ from nala.errors import loud_failure
 from nala.spend import SpendCeilingExceeded
 
 
-def process_turn(utterance: str, *, brain: Brain, session_id: str) -> chokepoint.ActionResult:
-    turn_id = events.new_id()
+def process_turn(utterance: str, *, brain: Brain, session_id: str, turn_id: str | None = None) -> chokepoint.ActionResult:
+    turn_id = turn_id or events.new_id()
     events.log_event(session_id, turn_id, "utterance", {"text": utterance})
 
     stripped = utterance.strip()
@@ -45,6 +45,20 @@ def render_transcript() -> str:
     return "\n".join(lines)
 
 
+def _run_turn(utterance: str, *, brain: Brain, session_id: str) -> str:
+    """Top-level catch-all around process_turn: whatever goes wrong, the
+    session must survive it. process_turn already handles the known failure
+    modes (BrainError, SpendCeilingExceeded) and returns a controlled
+    ActionResult for those; this is the safety net for anything else."""
+    turn_id = events.new_id()
+    try:
+        with loud_failure(session_id, turn_id, "process_turn"):
+            result = process_turn(utterance, brain=brain, session_id=session_id, turn_id=turn_id)
+    except Exception as exc:
+        return f"turn failed unexpectedly: {exc}"
+    return result.message
+
+
 def _startup_reconcile(session_id: str) -> None:
     try:
         with loud_failure(session_id, "startup", "startup reconciliation"):
@@ -68,8 +82,7 @@ def main():
     brain = Brain()
 
     if args.turn:
-        result = process_turn(args.turn, brain=brain, session_id=session_id)
-        print(result.message)
+        print(_run_turn(args.turn, brain=brain, session_id=session_id))
         return
 
     print("Nala (M3). Type 'exit' to quit, 'transcript' to view this session's log.")
@@ -86,8 +99,7 @@ def main():
         if utterance.lower() == "transcript":
             print(render_transcript())
             continue
-        result = process_turn(utterance, brain=brain, session_id=session_id)
-        print(result.message)
+        print(_run_turn(utterance, brain=brain, session_id=session_id))
 
 
 if __name__ == "__main__":
