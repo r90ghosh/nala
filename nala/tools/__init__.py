@@ -42,3 +42,4 @@ def register(action_type: str):
 # defined, since each submodule imports assert_in_chokepoint/register from us.
 from nala.tools import capture_task as _capture_task  # noqa: E402,F401
 from nala.tools import report_status as _report_status  # noqa: E402,F401
+from nala.tools import archive_task as _archive_task  # noqa: E402,F401

@@ -21,6 +21,7 @@ def _connect(data_dir: Path | None = None) -> sqlite3.Connection:
     d.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(d / DB_FILENAME)
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     conn.execute(
         """

@@ -12,6 +12,7 @@ import anthropic
 
 from nala import events
 from nala.config import get_anthropic_api_key
+from nala.spend import check_ceiling, record_spend
 
 MODEL = "claude-sonnet-5"
 TIMEOUT_SECONDS = 30.0
@@ -77,6 +78,8 @@ class Brain:
         self.model = model
 
     def decide(self, utterance: str, *, turn_id: str, session_id: str) -> RawIntent:
+        check_ceiling()  # refuse before dispatch, not after paying for the call
+
         events.log_event(session_id, turn_id, "llm_request", {"utterance": utterance, "model": self.model})
 
         try:
@@ -100,6 +103,13 @@ class Brain:
                     "output_tokens": response.usage.output_tokens,
                 },
             },
+        )
+
+        record_spend(
+            turn_id=turn_id,
+            model=self.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
         )
 
         if tool_block is None:

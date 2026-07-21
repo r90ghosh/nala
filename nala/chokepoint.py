@@ -1,18 +1,48 @@
 """execute_action(intent) — the single chokepoint. Tools are dispatched only
-from here. M2: boundary validation. Idempotency, atomicity/reconciliation,
-spend ceiling, and confirm-gating land in M3."""
+from here.
 
+Precondition block (in order): spend ceiling, then boundary validation.
+report_status is a pure read and bypasses the idempotency ledger entirely —
+it also triggers the reconciler and always reports "in-doubt actions: N",
+never a bare "all clear". Everything else (capture_task, archive_task) goes
+through the idempotency ledger with a two-phase commit: pending row -> side
+effect -> terminal state. Irreversible actions land in awaiting_confirm
+instead of pending until confirm_action() supplies a matching token.
+"""
+
+import hashlib
+import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
-from nala import events, tools, validation
+from nala import events, reconciler, tools, validation
+from nala.db import connect, ensure_processed_actions
+from nala.errors import loud_failure
+from nala.spend import SpendCeilingExceeded, check_ceiling
+
+# Test-only injection point: a callable(checkpoint_name) that can raise to
+# simulate a hard process kill at a specific point in the two-phase commit.
+# No-op in production.
+_crash_hook = None
 
 
 @dataclass
 class ActionResult:
-    status: str  # done | failed | rejected
+    status: str  # done | failed | rejected | awaiting_confirm | pending
     message: str
     data: dict = field(default_factory=dict)
+
+
+def compute_key(action_type: str, args: dict, turn_id: str) -> str:
+    canonical = json.dumps(args, sort_keys=True, separators=(",", ":"))
+    raw = f"{action_type}{canonical}{turn_id}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _checkpoint(name: str) -> None:
+    if _crash_hook is not None:
+        _crash_hook(name)
 
 
 def execute_action(
@@ -23,6 +53,12 @@ def execute_action(
     session_id: str,
     data_dir: Path | None = None,
 ) -> ActionResult:
+    try:
+        check_ceiling(data_dir)
+    except SpendCeilingExceeded as exc:
+        events.log_event(session_id, turn_id, "rejected", {"reason": str(exc)}, level="error", data_dir=data_dir)
+        return ActionResult(status="rejected", message=f"refused: {exc}")
+
     try:
         validated = validation.validate_intent(action_type, args)
     except validation.IntentValidationError as exc:
@@ -35,34 +71,173 @@ def execute_action(
             msg += f" — did you mean '{exc.suggestion}'?"
         return ActionResult(status="rejected", message=msg)
 
-    normalized_args = validated.model_dump(exclude={"action_type"})
+    if action_type == "report_status":
+        return _handle_report_status(session_id, turn_id, data_dir)
 
-    events.log_event(session_id, turn_id, "tool_call", {"action_type": action_type, "args": normalized_args}, data_dir=data_dir)
+    reversibility = validation.REVERSIBILITY[action_type]
+    normalized_args = validated.model_dump(exclude={"action_type"})
+    key = compute_key(action_type, normalized_args, turn_id)
+
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    existing = conn.execute("SELECT * FROM processed_actions WHERE idempotency_key = ?", (key,)).fetchone()
+
+    if existing:
+        conn.close()
+        if existing["status"] in ("done", "failed", "rejected"):
+            return _replay(existing, session_id, turn_id, data_dir)
+        if existing["status"] == "awaiting_confirm":
+            return ActionResult(
+                status="awaiting_confirm",
+                message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
+            )
+        return ActionResult(
+            status="pending",
+            message="this action is already in flight (in-doubt); the reconciler will resolve it",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    if reversibility == "irreversible":
+        conn.execute(
+            "INSERT OR IGNORE INTO processed_actions "
+            "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (key, turn_id, action_type, reversibility, json.dumps(normalized_args), "awaiting_confirm", now),
+        )
+        conn.commit()
+        conn.close()
+        return ActionResult(
+            status="awaiting_confirm",
+            message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
+        )
+
+    conn.execute(
+        "INSERT OR IGNORE INTO processed_actions "
+        "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (key, turn_id, action_type, reversibility, json.dumps(normalized_args), "pending", now),
+    )
+    conn.commit()
+    conn.close()
+
+    return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
+
+
+def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    row = conn.execute(
+        "SELECT * FROM processed_actions WHERE status='awaiting_confirm' AND idempotency_key LIKE ?",
+        (f"{token}%",),
+    ).fetchone()
+
+    if row is None:
+        conn.close()
+        events.log_event(session_id, turn_id, "rejected", {"reason": "no pending confirmation matches token", "token": token}, level="error", data_dir=data_dir)
+        return ActionResult(status="rejected", message=f"no pending confirmation matches '{token}'")
+
+    key = row["idempotency_key"]
+    action_type = row["action_type"]
+    normalized_args = json.loads(row["args_json"])
 
     try:
-        with tools.dispatching():
-            result = tools.TOOLS[action_type](**normalized_args)
-    except Exception as exc:
-        events.log_event(
-            session_id, turn_id, "error",
-            {"context": f"{action_type} dispatch", "exception": type(exc).__name__, "message": str(exc)},
-            level="error", data_dir=data_dir,
+        check_ceiling(data_dir)
+    except SpendCeilingExceeded as exc:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE processed_actions SET status='rejected', error_json=?, resolved_at=? WHERE idempotency_key=?",
+            (json.dumps({"reason": str(exc)}), now, key),
         )
+        conn.commit()
+        conn.close()
+        events.log_event(session_id, turn_id, "rejected", {"reason": str(exc)}, level="error", data_dir=data_dir)
+        return ActionResult(status="rejected", message=f"refused: {exc}")
+
+    conn.execute("UPDATE processed_actions SET status='pending' WHERE idempotency_key=?", (key,))
+    conn.commit()
+    conn.close()
+
+    return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
+
+
+def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
+    events.log_event(session_id, turn_id, "tool_call", {"action_type": action_type, "args": args}, data_dir=data_dir)
+    _checkpoint("after_pending_commit")
+
+    call_args = dict(args)
+    if action_type == "capture_task":
+        call_args["client_ref"] = key
+
+    try:
+        with loud_failure(session_id, turn_id, f"{action_type} dispatch", data_dir):
+            with tools.dispatching():
+                result = tools.TOOLS[action_type](**call_args)
+    except Exception as exc:
+        _mark_terminal(key, "failed", error={"exception": type(exc).__name__, "message": str(exc)}, data_dir=data_dir)
         return ActionResult(status="failed", message=f"{action_type} failed: {exc}")
 
+    _checkpoint("after_side_effect")
+
+    _mark_terminal(key, "done", result=result, data_dir=data_dir)
     events.log_event(session_id, turn_id, "tool_result", {"action_type": action_type, "result": result}, data_dir=data_dir)
 
-    if action_type == "report_status":
-        lines = []
-        for r in result:
-            if "error" in r:
-                lines.append(f"{r['repo']}: {r['error']}")
-                continue
-            flags = "(dirty)" if r["dirty"] else ""
-            lines.append(f"{r['repo']}: {r['branch']} {flags}".rstrip())
-        return ActionResult(status="done", message="\n".join(lines), data={"repos": result})
-
     if action_type == "capture_task":
-        return ActionResult(status="done", message=f"captured task #{result['id']}: {result['title']}", data=result)
+        message = f"captured task #{result['id']}: {result['title']}"
+    else:
+        message = f"{action_type} succeeded"
+    return ActionResult(status="done", message=message, data=result if isinstance(result, dict) else {})
 
-    return ActionResult(status="done", message=f"{action_type} succeeded", data=result if isinstance(result, dict) else {})
+
+def _mark_terminal(key: str, status: str, *, result: dict | None = None, error: dict | None = None, data_dir: Path | None = None) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    conn.execute(
+        "UPDATE processed_actions SET status=?, result_json=?, error_json=?, resolved_at=? WHERE idempotency_key=?",
+        (status, json.dumps(result) if result is not None else None, json.dumps(error) if error is not None else None, now, key),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _replay(row, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
+    result = json.loads(row["result_json"]) if row["result_json"] else None
+    error = json.loads(row["error_json"]) if row["error_json"] else None
+    events.log_event(session_id, turn_id, "tool_result", {"replayed": True, "status": row["status"]}, data_dir=data_dir)
+
+    if row["status"] == "done":
+        message = f"(already done — replayed) captured task #{result['id']}" if result and "id" in result else "(already done — replayed)"
+        return ActionResult(status="done", message=message, data=result or {})
+    if row["status"] == "failed":
+        return ActionResult(status="failed", message=f"(already failed — replayed) {error}", data={})
+    return ActionResult(status="rejected", message=f"(already rejected — replayed) {error}", data={})
+
+
+def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
+    reconcile_error = None
+    try:
+        with loud_failure(session_id, turn_id, "reconciler.reconcile", data_dir):
+            reconciler.reconcile(data_dir=data_dir, session_id=session_id, turn_id=turn_id)
+    except Exception as exc:
+        reconcile_error = str(exc)
+
+    events.log_event(session_id, turn_id, "tool_call", {"action_type": "report_status"}, data_dir=data_dir)
+    with tools.dispatching():
+        repos = tools.TOOLS["report_status"]()
+    events.log_event(session_id, turn_id, "tool_result", {"action_type": "report_status"}, data_dir=data_dir)
+
+    lines = []
+    for r in repos:
+        if "error" in r:
+            lines.append(f"{r['repo']}: {r['error']}")
+            continue
+        flags = "(dirty)" if r["dirty"] else ""
+        lines.append(f"{r['repo']}: {r['branch']} {flags}".rstrip())
+
+    in_doubt = reconciler.in_doubt_count(data_dir)
+    if reconcile_error:
+        lines.append(f"in-doubt actions: {in_doubt} (reconciliation failed: {reconcile_error})")
+    else:
+        lines.append(f"in-doubt actions: {in_doubt}")
+
+    return ActionResult(status="done", message="\n".join(lines), data={"repos": repos, "in_doubt_count": in_doubt})
