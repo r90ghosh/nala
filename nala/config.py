@@ -54,3 +54,7 @@ def get_ollama_url() -> str:
     # Already includes the /v1 suffix (OpenAI-compatible path), e.g.
     # "http://localhost:11434/v1" — callers append "/chat/completions" etc.
     return os.environ.get("NALA_OLLAMA_URL", "http://localhost:11434/v1")
+
+
+def get_access_token() -> str:
+    return os.environ.get("NALA_ACCESS_TOKEN", "")
