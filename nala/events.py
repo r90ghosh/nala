@@ -85,3 +85,12 @@ def events_for_session(session_id: str, data_dir: Path | None = None) -> list[sq
     ).fetchall()
     conn.close()
     return rows
+
+
+def events_for_turn(turn_id: str, data_dir: Path | None = None) -> list[sqlite3.Row]:
+    conn = _connect(data_dir)
+    rows = conn.execute(
+        "SELECT * FROM events WHERE turn_id = ? ORDER BY id ASC", (turn_id,)
+    ).fetchall()
+    conn.close()
+    return rows

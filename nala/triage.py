@@ -25,8 +25,9 @@ import httpx
 from nala import chokepoint, db, events, spend, state
 from nala.config import get_ollama_url
 from nala.errors import loud_failure
+from nala.routing import TRIAGE_MODEL
 
-MODEL = "llama3.2:3b"
+MODEL = TRIAGE_MODEL
 SESSION_ID = "triage"
 WATERMARK_NAME = "triage"
 

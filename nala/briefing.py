@@ -15,10 +15,10 @@ import anthropic
 from nala import chokepoint, db, events, spend
 from nala.config import get_anthropic_api_key
 from nala.errors import loud_failure
+from nala.routing import BRIEFING_MODEL
 from nala.spend import SpendCeilingExceeded, check_ceiling, record_spend
 
 SESSION_ID = "briefing"
-BRIEFING_MODEL = "claude-sonnet-5"
 
 
 def _fetch_todays_calendar(session_id: str, turn_id: str, data_dir: Path | None) -> str:

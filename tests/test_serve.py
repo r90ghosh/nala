@@ -32,15 +32,44 @@ def test_actions_endpoint_lists_processed_actions(data_dir, fake_backlog):
     assert data[0]["status"] == "done"
 
 
-def test_status_endpoint_reports_indoubt_and_spend(data_dir):
+def test_status_endpoint_reports_repos_and_indoubt(monkeypatch, data_dir, tmp_path):
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
     client = TestClient(app)
 
     resp = client.get("/api/status")
 
     assert resp.status_code == 200
     data = resp.json()
+    assert "repos" in data
     assert "in_doubt" in data
-    assert "today_spend_usd" in data
+    assert "message" in data
+
+
+def test_status_endpoint_is_cached_across_calls(monkeypatch, data_dir, tmp_path):
+    import nala.serve as serve_module
+
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+    serve_module._status_cache["payload"] = None
+    serve_module._status_cache["ts"] = 0.0
+    client = TestClient(app)
+
+    first = client.get("/api/status").json()
+    calls = {"n": 0}
+    real_execute_action = serve_module.chokepoint.execute_action
+
+    def spy(*args, **kwargs):
+        calls["n"] += 1
+        return real_execute_action(*args, **kwargs)
+
+    monkeypatch.setattr(serve_module.chokepoint, "execute_action", spy)
+    second = client.get("/api/status").json()
+
+    assert calls["n"] == 0  # served from cache, report_status never re-ran
+    assert first == second
 
 
 def test_confirm_endpoint_dispatches_awaiting_action(data_dir, fake_backlog):
@@ -116,3 +145,77 @@ def test_index_serves_html(data_dir):
 
     assert resp.status_code == 200
     assert "Nala" in resp.text
+
+
+def test_static_assets_are_served(data_dir):
+    client = TestClient(app)
+
+    css = client.get("/static/style.css")
+    js = client.get("/static/app.js")
+
+    assert css.status_code == 200
+    assert js.status_code == 200
+
+
+def test_spend_endpoint_reports_totals_and_breakdown(data_dir):
+    from nala import spend as spend_module
+    spend_module.record_spend(turn_id="t1", model="claude-sonnet-5", input_tokens=1000, output_tokens=1000)
+    client = TestClient(app)
+
+    resp = client.get("/api/spend")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["today_total"] > 0
+    assert "yesterday_total" in data
+    assert "ceiling" in data
+    assert any(row["model"] == "claude-sonnet-5" for row in data["by_model"])
+
+
+def test_health_endpoint_never_blocks_and_reports_watchers(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_OLLAMA_URL", "http://127.0.0.1:1")  # unreachable — must not hang or raise
+    client = TestClient(app)
+
+    resp = client.get("/api/health")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ollama_reachable"] is False
+    assert "google_token_ok" in data
+    assert set(data["watchers"].keys()) == {"gmail", "calendar", "git"}
+
+
+def test_routing_endpoint_reflects_real_config(data_dir):
+    from nala import routing
+    client = TestClient(app)
+
+    resp = client.get("/api/routing")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    tasks = {row["task"]: row["model"] for row in data}
+    assert tasks == {r["task"]: r["model"] for r in routing.get_routes()}
+
+
+def test_turn_endpoint_runs_process_turn_and_returns_events(data_dir, tmp_path, monkeypatch):
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+    monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.00")  # ceiling already "reached" — no real API call
+    client = TestClient(app)
+
+    resp = client.post("/api/turn", json={"text": "hello"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["turn_id"]
+    assert data["status"] == "rejected"  # refused pre-dispatch by the spend ceiling, never hits the real API
+    assert any(e["type"] == "utterance" for e in data["events"])
+
+
+def test_turn_endpoint_requires_text(data_dir):
+    client = TestClient(app)
+
+    resp = client.post("/api/turn", json={"text": "  "})
+
+    assert resp.status_code == 400

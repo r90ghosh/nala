@@ -124,9 +124,9 @@ def test_render_pending_shows_user_initiated_for_direct_action(data_dir, fake_ba
     assert "user-initiated" in text
 
 
-def test_index_html_escapes_all_origin_fields():
-    html = (Path(__file__).parent.parent / "nala" / "static" / "index.html").read_text()
-    assert "esc(origin.model" in html
-    assert "esc(origin.source" in html
-    assert "esc(origin.signal_title" in html
-    assert "esc(origin.reason" in html
+def test_app_js_escapes_all_origin_fields():
+    js = (Path(__file__).parent.parent / "nala" / "static" / "app.js").read_text()
+    assert "esc(origin.model" in js
+    assert "esc(origin.source" in js
+    assert "esc(origin.signal_title" in js
+    assert "esc(origin.reason" in js

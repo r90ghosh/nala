@@ -68,6 +68,17 @@ def total_for_day(day: str, data_dir: Path | None = None) -> float:
     return row["total"]
 
 
+def breakdown_for_day(day: str, data_dir: Path | None = None) -> list[dict]:
+    conn = _connect(data_dir)
+    rows = conn.execute(
+        "SELECT model, SUM(est_cost_usd) AS total, SUM(input_tokens) AS input_tokens, "
+        "SUM(output_tokens) AS output_tokens FROM spend WHERE day = ? GROUP BY model ORDER BY total DESC",
+        (day,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 def today_total(data_dir: Path | None = None) -> float:
     today = datetime.now(timezone.utc).date().isoformat()
     return total_for_day(today, data_dir)

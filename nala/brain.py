@@ -12,9 +12,10 @@ import anthropic
 
 from nala import events
 from nala.config import get_anthropic_api_key
+from nala.routing import AGENTIC_MODEL
 from nala.spend import check_ceiling, record_spend
 
-MODEL = "claude-sonnet-5"
+MODEL = AGENTIC_MODEL
 TIMEOUT_SECONDS = 30.0
 MAX_RETRIES = 2
 

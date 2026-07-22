@@ -48,3 +48,15 @@ def set_cursor(name: str, cursor: dict, data_dir: Path | None = None) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def get_updated_at(name: str, data_dir: Path | None = None) -> str | None:
+    """Last time this name's cursor was written — used as "last poll" for
+    watcher health display."""
+    conn = connect(data_dir)
+    try:
+        _ensure(conn)
+        row = conn.execute("SELECT updated_at FROM watermarks WHERE watcher = ?", (name,)).fetchone()
+        return row["updated_at"] if row else None
+    finally:
+        conn.close()
