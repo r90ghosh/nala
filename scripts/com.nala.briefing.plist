@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nala.briefing</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/ashirbadghosh/Projects/nala/.venv/bin/python</string>
+        <string>-m</string>
+        <string>nala.cli</string>
+        <string>--briefing</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/ashirbadghosh/Projects/nala</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/ashirbadghosh/.nala/logs/briefing.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/ashirbadghosh/.nala/logs/briefing.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

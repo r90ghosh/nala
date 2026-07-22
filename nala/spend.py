@@ -61,12 +61,16 @@ def record_spend(
     return cost
 
 
-def today_total(data_dir: Path | None = None) -> float:
-    today = datetime.now(timezone.utc).date().isoformat()
+def total_for_day(day: str, data_dir: Path | None = None) -> float:
     conn = _connect(data_dir)
-    row = conn.execute("SELECT COALESCE(SUM(est_cost_usd), 0) AS total FROM spend WHERE day = ?", (today,)).fetchone()
+    row = conn.execute("SELECT COALESCE(SUM(est_cost_usd), 0) AS total FROM spend WHERE day = ?", (day,)).fetchone()
     conn.close()
     return row["total"]
+
+
+def today_total(data_dir: Path | None = None) -> float:
+    today = datetime.now(timezone.utc).date().isoformat()
+    return total_for_day(today, data_dir)
 
 
 def check_ceiling(data_dir: Path | None = None) -> None:

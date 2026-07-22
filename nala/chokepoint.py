@@ -145,7 +145,11 @@ def _resolve_row(row, key: str, session_id: str, turn_id: str, data_dir: Path | 
     )
 
 
-def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+def _find_awaiting_confirm_row(token: str, *, session_id: str, turn_id: str, data_dir: Path | None):
+    """Shared by confirm_action and reject_action (CLI and web both call
+    these — this is the one place token resolution happens). Returns
+    (row, None) on a clean single match, or (None, ActionResult) with the
+    rejection already logged."""
     token = token.strip().lower()
 
     if not token or not _HEX_TOKEN.match(token):
@@ -154,33 +158,39 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
             {"reason": "confirm token must be hex characters only", "token": token},
             level="error", data_dir=data_dir,
         )
-        return ActionResult(status="rejected", message=f"invalid confirm token '{token}' — expected a hex idempotency-key prefix")
+        return None, ActionResult(status="rejected", message=f"invalid confirm token '{token}' — expected a hex idempotency-key prefix")
 
     conn = connect(data_dir)
     ensure_processed_actions(conn)
     # Match in Python against the literal token — never SQL LIKE on raw user
     # input, since '%'/'_' are LIKE wildcards that would match any row.
     candidates = conn.execute("SELECT * FROM processed_actions WHERE status='awaiting_confirm'").fetchall()
+    conn.close()
     matches = [r for r in candidates if r["idempotency_key"].startswith(token)]
 
     if not matches:
-        conn.close()
         events.log_event(session_id, turn_id, "rejected", {"reason": "no pending confirmation matches token", "token": token}, level="error", data_dir=data_dir)
-        return ActionResult(status="rejected", message=f"no pending confirmation matches '{token}'")
+        return None, ActionResult(status="rejected", message=f"no pending confirmation matches '{token}'")
 
     if len(matches) > 1:
-        conn.close()
         events.log_event(
             session_id, turn_id, "rejected",
             {"reason": "ambiguous confirm token", "token": token, "match_count": len(matches)},
             level="error", data_dir=data_dir,
         )
-        return ActionResult(
+        return None, ActionResult(
             status="rejected",
             message=f"ambiguous token '{token}' matches {len(matches)} pending confirmations — provide more characters",
         )
 
-    row = matches[0]
+    return matches[0], None
+
+
+def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+    row, rejection = _find_awaiting_confirm_row(token, session_id=session_id, turn_id=turn_id, data_dir=data_dir)
+    if rejection is not None:
+        return rejection
+
     key = row["idempotency_key"]
     action_type = row["action_type"]
     normalized_args = json.loads(row["args_json"])
@@ -189,8 +199,10 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
         check_ceiling(data_dir)
     except SpendCeilingExceeded as exc:
         now = datetime.now(timezone.utc).isoformat()
+        conn = connect(data_dir)
+        ensure_processed_actions(conn)
         conn.execute(
-            "UPDATE processed_actions SET status='rejected', error_json=?, resolved_at=? WHERE idempotency_key=?",
+            "UPDATE processed_actions SET status='rejected', error_json=?, resolved_at=? WHERE idempotency_key=? AND status='awaiting_confirm'",
             (json.dumps({"reason": str(exc)}), now, key),
         )
         conn.commit()
@@ -198,11 +210,42 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
         events.log_event(session_id, turn_id, "rejected", {"reason": str(exc)}, level="error", data_dir=data_dir)
         return ActionResult(status="rejected", message=f"refused: {exc}")
 
-    conn.execute("UPDATE processed_actions SET status='pending' WHERE idempotency_key=?", (key,))
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    cur = conn.execute("UPDATE processed_actions SET status='pending' WHERE idempotency_key=? AND status='awaiting_confirm'", (key,))
     conn.commit()
     conn.close()
 
+    if cur.rowcount == 0:
+        events.log_event(session_id, turn_id, "rejected", {"reason": "action was already resolved by another confirm/reject", "idempotency_key": key}, level="error", data_dir=data_dir)
+        return ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)")
+
     return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
+
+
+def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+    row, rejection = _find_awaiting_confirm_row(token, session_id=session_id, turn_id=turn_id, data_dir=data_dir)
+    if rejection is not None:
+        return rejection
+
+    key = row["idempotency_key"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    cur = conn.execute(
+        "UPDATE processed_actions SET status='rejected', error_json=?, resolved_at=? WHERE idempotency_key=? AND status='awaiting_confirm'",
+        (json.dumps({"reason": "rejected by operator"}), now, key),
+    )
+    conn.commit()
+    conn.close()
+
+    if cur.rowcount == 0:
+        events.log_event(session_id, turn_id, "rejected", {"reason": "action was already resolved by another confirm/reject", "idempotency_key": key}, level="error", data_dir=data_dir)
+        return ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)")
+
+    events.log_event(session_id, turn_id, "rejected", {"reason": "operator rejected proposed action", "idempotency_key": key}, data_dir=data_dir)
+    return ActionResult(status="rejected", message=f"rejected {row['action_type']} #{key[:8]}")
 
 
 def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:

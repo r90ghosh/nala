@@ -7,6 +7,7 @@ import json
 
 from nala import chokepoint, events, reconciler
 from nala.brain import Brain, BrainError
+from nala.briefing import compose_briefing
 from nala.errors import loud_failure
 from nala.spend import SpendCeilingExceeded
 
@@ -70,11 +71,16 @@ def _startup_reconcile(session_id: str) -> None:
 def main():
     parser = argparse.ArgumentParser(prog="nala")
     parser.add_argument("--turn", help="run a single turn and exit")
+    parser.add_argument("--briefing", action="store_true", help="compose and print the morning briefing")
     parser.add_argument("command", nargs="?", choices=["transcript"], default=None)
     args = parser.parse_args()
 
     if args.command == "transcript":
         print(render_transcript())
+        return
+
+    if args.briefing:
+        print(compose_briefing())
         return
 
     session_id = events.new_id()

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nala — Mission Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --base:#0a0e14; --panel:#0f131b; --panel2:#111827; --hair:#1e2430;
+    --ink:#e5edf5; --mute:#8a97a8; --faint:#5a6678;
+    --accent:#38bdf8; --emerald:#34d399; --amber:#fbbf24; --red:#f87171;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:#06080d;color:var(--mute);font-family:'Inter',system-ui,sans-serif;font-size:13px;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#1e2430;border-radius:8px;}
+
+  .topbar{height:52px;flex-shrink:0;border-bottom:1px solid var(--hair);background:#0b0f16;display:flex;align-items:center;gap:12px;padding:0 16px;}
+  .brand{font-weight:700;font-size:14px;color:#fff;letter-spacing:.02em;}
+  .brand .sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);margin-left:8px;}
+  .topbar .spacer{flex:1;}
+  .chip{display:flex;align-items:center;gap:6px;border:1px solid var(--hair);background:var(--panel);border-radius:8px;padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:11px;}
+  .chip.indoubt-zero{color:var(--emerald);border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.08);}
+  .chip.indoubt-some{color:var(--amber);border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.08);}
+  .chip.spend{color:#dbe3ee;}
+
+  .layout{display:grid;grid-template-columns:360px 1fr;gap:14px;padding:14px;height:calc(100vh - 52px);overflow:hidden;}
+  .col{display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto;}
+  .panel{border:1px solid var(--hair);border-radius:12px;background:var(--panel);display:flex;flex-direction:column;min-height:0;}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--hair);}
+  .panel-head .title{font-size:12px;font-weight:600;color:#fff;}
+  .panel-head .tag{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);}
+  .panel-body{padding:9px;overflow-y:auto;flex:1;min-height:0;}
+
+  .confirm-card{border:1px solid rgba(251,191,36,.28);border-radius:9px;background:rgba(251,191,36,.05);padding:10px;margin-bottom:8px;}
+  .confirm-card .ct-type{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--amber);}
+  .confirm-card .ct-args{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px;word-break:break-word;}
+  .confirm-card .ct-key{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);margin-top:4px;}
+  .confirm-card .ct-actions{display:flex;gap:8px;margin-top:8px;}
+  .btn{border:1px solid var(--hair);background:var(--panel2);color:var(--ink);border-radius:7px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;}
+  .btn.confirm{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.12);color:var(--emerald);}
+  .btn.reject{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:var(--red);}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .empty{color:var(--faint);font-size:12px;padding:12px;text-align:center;}
+
+  .feed-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:5px 8px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5;}
+  .feed-row:hover{background:rgba(255,255,255,.02);}
+  .feed-row .ts{color:var(--faint);flex-shrink:0;}
+  .feed-row .type{flex-shrink:0;padding:1px 6px;border-radius:4px;font-size:10px;}
+  .feed-row .type.info{color:var(--accent);background:rgba(56,189,248,.1);}
+  .feed-row .type.error{color:var(--red);background:rgba(248,113,113,.1);}
+  .feed-row .payload{color:var(--mute);word-break:break-word;}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">NALA <span class="sub">mission control</span></div>
+    <div class="spacer"></div>
+    <div class="chip" id="indoubt-chip">in-doubt: —</div>
+    <div class="chip spend" id="spend-chip">spend today: —</div>
+  </div>
+
+  <div class="layout">
+    <div class="col">
+      <div class="panel" style="flex:1;">
+        <div class="panel-head">
+          <div class="title">Awaiting Confirm</div>
+          <div class="tag" id="awaiting-count-tag">0</div>
+        </div>
+        <div class="panel-body" id="awaiting-list"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel" style="flex:1;">
+        <div class="panel-head">
+          <div class="title">Event Timeline</div>
+          <div class="tag">polling · 2s</div>
+        </div>
+        <div class="panel-body" id="event-feed"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let lastEventId = 0;
+const feedEl = document.getElementById('event-feed');
+const awaitingEl = document.getElementById('awaiting-list');
+const awaitingTagEl = document.getElementById('awaiting-count-tag');
+const indoubtChip = document.getElementById('indoubt-chip');
+const spendChip = document.getElementById('spend-chip');
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    indoubtChip.textContent = `in-doubt: ${s.in_doubt}`;
+    indoubtChip.className = 'chip ' + (s.in_doubt > 0 ? 'indoubt-some' : 'indoubt-zero');
+    spendChip.textContent = `spend today: $${s.today_spend_usd.toFixed(4)}`;
+  } catch (e) {
+    indoubtChip.textContent = 'in-doubt: unreachable';
+    indoubtChip.className = 'chip indoubt-some';
+  }
+}
+
+async function pollActions() {
+  try {
+    const r = await fetch('/api/actions');
+    const actions = await r.json();
+    const awaiting = actions.filter(a => a.status === 'awaiting_confirm');
+    awaitingTagEl.textContent = awaiting.length;
+    if (awaiting.length === 0) {
+      awaitingEl.innerHTML = '<div class="empty">nothing awaiting confirmation</div>';
+      return;
+    }
+    awaitingEl.innerHTML = awaiting.map(a => {
+      const token = a.idempotency_key.slice(0, 8);
+      return `
+        <div class="confirm-card">
+          <div class="ct-type">${esc(a.action_type)}</div>
+          <div class="ct-args">${esc(a.args_json)}</div>
+          <div class="ct-key">token: ${token}</div>
+          <div class="ct-actions">
+            <button class="btn confirm" onclick="act('${token}','confirm',this)">Confirm</button>
+            <button class="btn reject" onclick="act('${token}','reject',this)">Reject</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    // loud in the UI, never silent: leave prior state visible but flag it
+    awaitingTagEl.textContent = 'unreachable';
+  }
+}
+
+async function act(token, verb, btn) {
+  btn.disabled = true;
+  try {
+    await fetch(`/api/actions/${token}/${verb}`, { method: 'POST' });
+  } finally {
+    pollActions();
+    pollEvents();
+  }
+}
+
+async function pollEvents() {
+  try {
+    const r = await fetch(`/api/events?since=${lastEventId}`);
+    const rows = await r.json();
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      lastEventId = Math.max(lastEventId, row.id);
+      const div = document.createElement('div');
+      div.className = 'feed-row';
+      div.innerHTML = `<span class="ts">${esc(row.ts)}</span><span class="type ${row.level}">${esc(row.type)}</span><span class="payload">${esc(row.payload_json)}</span>`;
+      feedEl.appendChild(div);
+    }
+    feedEl.scrollTop = feedEl.scrollHeight;
+  } catch (e) {
+    // never silent — surface it as a feed row
+    const div = document.createElement('div');
+    div.className = 'feed-row';
+    div.innerHTML = `<span class="type error">error</span><span class="payload">events feed unreachable</span>`;
+    feedEl.appendChild(div);
+  }
+}
+
+function tick() {
+  pollStatus();
+  pollActions();
+  pollEvents();
+}
+
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>

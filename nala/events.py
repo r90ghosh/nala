@@ -44,6 +44,13 @@ def new_id() -> str:
     return uuid.uuid4().hex
 
 
+def ensure_schema(data_dir: Path | None = None) -> None:
+    """Ensures the events table exists without writing a row — for callers
+    (like nala.briefing) that query it directly via nala.db.connect() and
+    need the table to exist even if nothing has been logged yet."""
+    _connect(data_dir).close()
+
+
 def log_event(
     session_id: str,
     turn_id: str | None,
