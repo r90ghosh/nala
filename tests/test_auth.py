@@ -83,3 +83,21 @@ def test_no_access_token_configured_fails_closed_for_tunnel_traffic(monkeypatch,
     resp = client.get("/api/events", headers=TUNNEL_HEADERS)
 
     assert resp.status_code == 401
+
+
+def test_login_with_malformed_json_body_is_400_not_500(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    client = TestClient(app)
+
+    resp = client.post("/login", content=b"not json at all", headers={"Content-Type": "application/json"})
+
+    assert resp.status_code == 400
+
+
+def test_login_with_non_dict_json_body_is_400_not_500(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    client = TestClient(app)
+
+    resp = client.post("/login", json=["not", "a", "dict"])
+
+    assert resp.status_code == 400

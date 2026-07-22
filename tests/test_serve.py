@@ -219,3 +219,33 @@ def test_turn_endpoint_requires_text(data_dir):
     resp = client.post("/api/turn", json={"text": "  "})
 
     assert resp.status_code == 400
+
+
+def test_turn_endpoint_malformed_json_body_is_400_not_500(data_dir):
+    client = TestClient(app)
+
+    resp = client.post("/api/turn", content=b"not json at all", headers={"Content-Type": "application/json"})
+
+    assert resp.status_code == 400
+
+
+def test_status_cache_refresh_tags_events_with_actor_status_cache(monkeypatch, data_dir, tmp_path):
+    import nala.serve as serve_module
+
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+    serve_module._status_cache["payload"] = None
+    serve_module._status_cache["ts"] = 0.0
+    client = TestClient(app)
+
+    client.get("/api/status")
+
+    from nala import db
+    conn = db.connect()
+    rows = conn.execute("SELECT * FROM events WHERE type = 'tool_call'").fetchall()
+    conn.close()
+    assert len(rows) == 1
+    import json
+    payload = json.loads(rows[0]["payload_json"])
+    assert payload["actor"] == "status-cache"

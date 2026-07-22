@@ -254,11 +254,17 @@ function applyFeedFilters() {
 feedFilterEls.forEach(cb => cb.addEventListener('change', applyFeedFilters));
 
 function appendFeedRow(row) {
-  const emptyEl = feedEl.querySelector('.feed-empty');
-  if (emptyEl) emptyEl.remove();
-
   let payload = {};
   try { payload = JSON.parse(row.payload_json); } catch (e) { payload = { raw: row.payload_json }; }
+
+  // The web UI's own 60s /api/status cache-refresh runs report_status
+  // through the chokepoint too — still logged (nothing is ever off-log),
+  // just excluded from the hero feed by default so routine polling doesn't
+  // drown out real activity.
+  if (payload.actor === 'status-cache') return;
+
+  const emptyEl = feedEl.querySelector('.feed-empty');
+  if (emptyEl) emptyEl.remove();
 
   const cat = feedCategory(row.type);
   const div = document.createElement('div');

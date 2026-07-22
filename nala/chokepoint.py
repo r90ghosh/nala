@@ -2,12 +2,13 @@
 from here.
 
 Precondition block (in order): spend ceiling, then boundary validation.
-report_status is a pure read and bypasses the idempotency ledger entirely —
-it also triggers the reconciler and always reports "in-doubt actions: N",
-never a bare "all clear". Everything else (capture_task, archive_task) goes
-through the idempotency ledger with a two-phase commit: pending row -> side
-effect -> terminal state. Irreversible actions land in awaiting_confirm
-instead of pending until confirm_action() supplies a matching token.
+report_status and memory_recall are pure reads and bypass the idempotency
+ledger entirely — report_status also triggers the reconciler and always
+reports "in-doubt actions: N", never a bare "all clear". Everything else
+(capture_task, archive_task, memory_write) goes through the idempotency
+ledger with a two-phase commit: pending row -> side effect -> terminal
+state. Irreversible actions land in awaiting_confirm instead of pending
+until confirm_action() supplies a matching token.
 """
 
 import hashlib
@@ -133,11 +134,18 @@ def execute_action(
     session_id: str,
     data_dir: Path | None = None,
     force_confirm: bool = False,
+    actor: str | None = None,
 ) -> ActionResult:
     """force_confirm: proactive callers (triage, M4+) pass True to require a
     confirm regardless of the action's own reversibility tag — in M4, every
     proactively-proposed action is gated, full stop; per-purpose risk
-    profiles (auto/notify/confirm) arrive with purposes in M5."""
+    profiles (auto/notify/confirm) arrive with purposes in M5.
+
+    actor: an optional tag (e.g. "status-cache") embedded in the tool_call/
+    tool_result payload for report_status. It exists so a non-user-initiated
+    poller (the web UI's 60s status-cache refresh) can be distinguished from
+    a real user asking for status — still logged, just filterable, so it
+    doesn't drown the observability feed under routine polling."""
     try:
         check_ceiling(data_dir)
     except SpendCeilingExceeded as exc:
@@ -156,11 +164,14 @@ def execute_action(
             msg += f" — did you mean '{exc.suggestion}'?"
         return ActionResult(status="rejected", message=msg)
 
+    normalized_args = validated.model_dump(exclude={"action_type"})
+
     if action_type == "report_status":
-        return _handle_report_status(session_id, turn_id, data_dir)
+        return _handle_report_status(session_id, turn_id, data_dir, actor=actor)
+    if action_type == "memory_recall":
+        return _handle_memory_recall(session_id, turn_id, normalized_args, data_dir)
 
     reversibility = validation.REVERSIBILITY[action_type]
-    normalized_args = validated.model_dump(exclude={"action_type"})
     key = compute_key(action_type, normalized_args, turn_id)
 
     conn = connect(data_dir)
@@ -349,6 +360,11 @@ def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: 
     _mark_terminal(key, "done", result=result, data_dir=data_dir)
     events.log_event(session_id, turn_id, "tool_result", {"action_type": action_type, "result": result}, data_dir=data_dir)
 
+    if action_type == "memory_write":
+        # A dedicated event type (not just tool_call/tool_result) so the
+        # Memory tab's recent-writes panel can query for it directly.
+        events.log_event(session_id, turn_id, "memory_write", {"op": args.get("op"), "result": result}, data_dir=data_dir)
+
     if action_type == "capture_task":
         message = f"captured task #{result['id']}: {result['title']}"
     else:
@@ -381,7 +397,7 @@ def _replay(row, session_id: str, turn_id: str, data_dir: Path | None) -> Action
     return ActionResult(status="rejected", message=f"(already rejected — replayed) {error}", data={})
 
 
-def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
+def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None, actor: str | None = None) -> ActionResult:
     reconcile_error = None
     try:
         with loud_failure(session_id, turn_id, "reconciler.reconcile", data_dir):
@@ -389,7 +405,10 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
     except Exception as exc:
         reconcile_error = str(exc)
 
-    events.log_event(session_id, turn_id, "tool_call", {"action_type": "report_status"}, data_dir=data_dir)
+    call_payload = {"action_type": "report_status"}
+    if actor:
+        call_payload["actor"] = actor
+    events.log_event(session_id, turn_id, "tool_call", call_payload, data_dir=data_dir)
 
     repos_error = None
     repos: list = []
@@ -400,7 +419,10 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
     except Exception as exc:
         repos_error = str(exc)
 
-    events.log_event(session_id, turn_id, "tool_result", {"action_type": "report_status", "error": repos_error}, data_dir=data_dir)
+    result_payload = {"action_type": "report_status", "error": repos_error}
+    if actor:
+        result_payload["actor"] = actor
+    events.log_event(session_id, turn_id, "tool_result", result_payload, data_dir=data_dir)
 
     lines = []
     if repos_error:
@@ -421,3 +443,25 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
 
     status = "failed" if repos_error else "done"
     return ActionResult(status=status, message="\n".join(lines), data={"repos": repos, "in_doubt_count": in_doubt})
+
+
+def _handle_memory_recall(session_id: str, turn_id: str, args: dict, data_dir: Path | None) -> ActionResult:
+    """memory_recall is a pure read — same ledger-bypass treatment as
+    report_status, since there's no side effect to dedupe or reconcile."""
+    events.log_event(session_id, turn_id, "tool_call", {"action_type": "memory_recall", "args": args}, data_dir=data_dir)
+
+    try:
+        with loud_failure(session_id, turn_id, "memory_recall dispatch", data_dir):
+            with tools.dispatching() as ticket:
+                result = tools.dispatch("memory_recall", args, ticket)
+    except Exception as exc:
+        events.log_event(
+            session_id, turn_id, "tool_result",
+            {"action_type": "memory_recall", "error": str(exc)}, level="error", data_dir=data_dir,
+        )
+        return ActionResult(status="failed", message=f"memory_recall failed: {exc}")
+
+    events.log_event(session_id, turn_id, "tool_result", {"action_type": "memory_recall", "result": result}, data_dir=data_dir)
+
+    node_count = len(result.get("nodes", []))
+    return ActionResult(status="done", message=f"recalled {node_count} node(s)", data=result)

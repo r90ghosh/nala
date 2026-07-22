@@ -49,9 +49,25 @@ async def access_token_gate(request: Request, call_next):
     return HTMLResponse((STATIC_DIR / "login.html").read_text(), status_code=401)
 
 
+async def _safe_json_body(request: Request) -> tuple[dict | None, JSONResponse | None]:
+    """A malformed/non-JSON body must never 500 — request.json() raises on
+    invalid JSON, and a non-dict body (e.g. a bare JSON array) would raise
+    AttributeError on the first .get() call. Both are just a bad request."""
+    try:
+        body = await request.json()
+    except Exception:
+        return None, JSONResponse({"error": "bad request"}, status_code=400)
+    if not isinstance(body, dict):
+        return None, JSONResponse({"error": "bad request"}, status_code=400)
+    return body, None
+
+
 @app.post("/login")
 async def login(request: Request):
-    body = await request.json()
+    body, err = await _safe_json_body(request)
+    if err is not None:
+        return err
+
     submitted = body.get("token", "")
     if not auth.verify_submitted_token(submitted):
         return JSONResponse({"error": "invalid token"}, status_code=401)
@@ -93,7 +109,7 @@ def api_get_status():
         return cached
 
     turn_id = events.new_id()
-    result = chokepoint.execute_action("report_status", {}, turn_id=turn_id, session_id=SESSION_ID)
+    result = chokepoint.execute_action("report_status", {}, turn_id=turn_id, session_id=SESSION_ID, actor="status-cache")
     payload = {
         "status": result.status,
         "message": result.message,
@@ -160,7 +176,10 @@ def _run_turn_sync(text: str) -> tuple[str, chokepoint.ActionResult]:
 
 @app.post("/api/turn")
 async def api_turn(request: Request):
-    body = await request.json()
+    body, err = await _safe_json_body(request)
+    if err is not None:
+        return err
+
     text = (body.get("text") or "").strip()
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)

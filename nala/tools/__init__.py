@@ -77,3 +77,5 @@ def dispatch(action_type: str, args: dict, ticket: DispatchTicket):
 from nala.tools import capture_task as _capture_task  # noqa: E402,F401
 from nala.tools import report_status as _report_status  # noqa: E402,F401
 from nala.tools import archive_task as _archive_task  # noqa: E402,F401
+from nala.tools import memory_write as _memory_write  # noqa: E402,F401
+from nala.tools import memory_recall as _memory_recall  # noqa: E402,F401
