@@ -97,8 +97,33 @@ the action path. Repo: https://github.com/r90ghosh/nala
     layout is O(n²) × 220 sync iterations on the main thread — will visibly jank once the graph
     reaches a few hundred nodes; fine at the current scale (single digits), revisit before it
     isn't.
-- **Next (Session 5 / M7):** iOS app (Expo) — push, location, health, voice over the
-  `com.nala.tunnel` cloudflared tunnel. Same core, a second client.
+- **Session 5 complete (2026-07-22):** M7 — the native iOS app, a new `mobile/` subdir
+  (Expo SDK 57, TypeScript, expo-router, managed workflow — no eject/prebuild). Screens:
+  onboarding/pairing (server URL + access token, validated via `GET /api/health` before
+  anything is persisted to `expo-secure-store`), Feed (polls `GET /api/events` every 3s),
+  PTT (hero button — `expo-audio` records uncompressed 16-bit PCM WAV directly, `expo-
+  file-system` uploads multipart to `/api/voice/turn`, autoplays the reply via
+  `createAudioPlayer`), Actions (awaiting_confirm cards with the same proactive/user
+  provenance block as the web queue, confirm/reject), Memory (list view of `GET
+  /api/memory` nodes — graph viz skipped for v1 per scope). `npx tsc --noEmit` clean,
+  `expo-doctor` 19/20 (the one failure is a stray, unrelated react install in the home
+  directory, outside this repo), Metro bundles the iOS entry cleanly (1285 modules, zero
+  errors). `mobile/scripts/verify-api.ts` (tsx) verified the full networking contract
+  against a live, running `nala.serve` before ever touching the Simulator.
+  - **Auth design decision, coordinated with `nala/auth.py`:** rather than have the app
+    try to set a spoofed `Origin` header (uncertain whether React Native's fetch even
+    allows it, and fragile either way), the app authenticates via
+    `Authorization: Bearer <token>` instead. Added `auth.is_bearer_authenticated` — a
+    valid bearer token now stands in for BOTH the cookie (tunnel requests) and the Origin
+    allow-list (state-changing requests), since a bearer token can't be silently replayed
+    by a malicious webpage the way a cookie can. This is a nala/ (Python) change living
+    alongside the mobile client, not a `mobile/` file — see `nala/serve.py`'s
+    `access_token_gate` middleware. Covered by new tests in `tests/test_auth.py`.
+  - **Not yet verified:** real PTT audio round-trip (recording → transcribe → reply) needs
+    an actual Simulator session with real mic input — team lead verifies in Xcode.
+  - Total Python test count: 206 (up from 199 — the bearer-token tests).
+- **Next:** M8 per PLAN.md's milestone table — Finance (SimpleFIN, read-only), News/Purchase
+  watchers, digests. Thin purposes riding the memory/purposes/chokepoint rails already built.
 
 ## Commands
 
@@ -195,6 +220,19 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
   initialized once, long before concurrent access matters) but worth knowing if a test seems
   flakily slow: pre-warm with a throwaway `connect()` before spawning concurrent workers, as
   `test_upsert_node_concurrent_calls_produce_exactly_one_node` does.
+- **`Authorization: Bearer <token>` is a full alternative auth path** (`auth.is_bearer_authenticated`),
+  not just a cookie substitute — a valid bearer token bypasses BOTH the CSRF Origin check
+  (state-changing requests) and the tunnel cookie check (every request), computed once at the
+  top of `access_token_gate` as `bearer_ok`. This exists for `mobile/` (M7's iOS app), which has
+  no browser session to hold a cookie in. Any future non-browser client should use this same
+  header rather than trying to fake an Origin.
+- **`mobile/` is a separate Node/TypeScript project** (Expo, managed workflow) living alongside
+  the Python package — its own `package.json`/`node_modules`/`.gitignore`, no interaction with
+  `.venv` or `pyproject.toml`. `mobile/README.md` has run instructions;
+  `mobile/scripts/verify-api.ts` checks the networking contract against a live `nala.serve`
+  without needing the Simulator. `mobile/.npmrc` sets `legacy-peer-deps=true` — required because
+  `expo-router`'s web-support deps (`@expo/ui` → Radix UI) have an upstream peer conflict that's
+  irrelevant to the iOS target but still trips plain `npm install`.
 
 ## Session checklist
 
@@ -207,6 +245,8 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
 
 ## Related projects
 
+- `mobile/` — the M7 iOS app (Expo/TypeScript), in this same repo but a fully separate
+  Node project. See `mobile/README.md`.
 - `~/.backlog/server.py` — task API Nala writes to (no auth, no pagination, TEXT columns)
 - `~/.claude-dashboard/parse_usage.py` — cost rates must stay in sync with nala/spend.py
 - `mockups/jarvis-final-flow.html` — UX north star (project renamed Jarvis → Nala); also the

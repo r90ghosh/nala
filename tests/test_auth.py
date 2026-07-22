@@ -153,3 +153,58 @@ def test_static_mount_still_requires_tunnel_auth(monkeypatch, data_dir):
     resp = client.get("/static/app.js", headers=TUNNEL_HEADERS)
 
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------- bearer token (M7 iOS client)
+
+def test_is_bearer_authenticated_accepts_correct_token(monkeypatch):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    assert auth.is_bearer_authenticated("Bearer correct-token") is True
+
+
+def test_is_bearer_authenticated_rejects_wrong_token(monkeypatch):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    assert auth.is_bearer_authenticated("Bearer wrong-token") is False
+
+
+def test_is_bearer_authenticated_rejects_missing_or_malformed_header(monkeypatch):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    assert auth.is_bearer_authenticated(None) is False
+    assert auth.is_bearer_authenticated("") is False
+    assert auth.is_bearer_authenticated("correct-token") is False  # missing "Bearer " prefix
+    assert auth.is_bearer_authenticated("Bearer ") is False
+
+
+def test_is_bearer_authenticated_fails_closed_with_no_token_configured(monkeypatch):
+    monkeypatch.delenv("NALA_ACCESS_TOKEN", raising=False)
+    assert auth.is_bearer_authenticated("Bearer anything") is False
+
+
+def test_bearer_token_bypasses_csrf_origin_gate_on_state_changing_request(monkeypatch, data_dir):
+    # This is the point of it: a native client (no browser session, can't
+    # rely on cookies) authenticates via bearer token instead of Origin.
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.00")  # avoid a real API call past the gate
+    client = TestClient(app, headers={"authorization": "Bearer correct-token"})  # no Origin at all
+
+    resp = client.post("/api/turn", json={"text": "hello"})
+
+    assert resp.status_code != 403
+
+
+def test_bearer_token_authenticates_tunnel_requests_without_a_cookie(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    client = TestClient(app, headers={"authorization": "Bearer correct-token"})
+
+    resp = client.get("/api/events", headers=TUNNEL_HEADERS)  # tunnel traffic, no cookie at all
+
+    assert resp.status_code == 200
+
+
+def test_wrong_bearer_token_does_not_bypass_tunnel_auth(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    client = TestClient(app, headers={"authorization": "Bearer wrong-token"})
+
+    resp = client.get("/api/events", headers=TUNNEL_HEADERS)
+
+    assert resp.status_code == 401

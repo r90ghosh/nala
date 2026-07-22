@@ -56,6 +56,25 @@ def is_authenticated(cookie_value: str | None) -> bool:
     return secrets.compare_digest(cookie_value, token)
 
 
+def is_bearer_authenticated(header_value: str | None) -> bool:
+    """Alternative to the cookie for non-browser clients (the M7 iOS app)
+    that can't rely on ambient cookie auth the way a browser session does.
+    A bearer token is also a stronger CSRF defense than it might look: a
+    browser silently attaches cookies to any request, same-site or not,
+    which is exactly what makes cookie auth alone CSRF-able — but nothing
+    attaches an Authorization header automatically. Only code that already
+    knows the secret token (the paired app, reading it from its own
+    on-device secure-store) can produce one, so presenting a valid bearer
+    token is treated as sufficient on its own, standing in for both the
+    origin check (for state-changing requests) and the cookie check (for
+    tunnel requests) — see serve.py's access_token_gate."""
+    token = get_access_token()
+    if not token or not header_value or not header_value.startswith("Bearer "):
+        return False
+    submitted = header_value[len("Bearer "):].strip()
+    return bool(submitted) and secrets.compare_digest(submitted, token)
+
+
 def verify_submitted_token(submitted: str) -> bool:
     token = get_access_token()
     if not token or not submitted:

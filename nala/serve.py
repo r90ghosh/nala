@@ -43,19 +43,31 @@ _status_cache: dict = {"payload": None, "ts": 0.0}
 
 @app.middleware("http")
 async def access_token_gate(request: Request, call_next):
-    """Two independent gates:
+    """Three independent gates:
 
-    1. CSRF Origin allow-list — every state-changing request (POST/PUT/
-       PATCH/DELETE), regardless of tunnel-vs-local classification below.
-       Local traffic used to skip this entirely, which is exactly what let
-       a malicious page in the user's own browser blind-POST to
-       127.0.0.1:8642 and dispatch real actions with zero auth (confirmed
-       live). GET routes are unaffected — nothing here mutates state.
+    1. Bearer token (M7+) — the iOS app authenticates via `Authorization:
+       Bearer <token>` instead of a cookie (no browser session to hold one
+       in). A valid bearer token stands in for BOTH gates below: it can't
+       be silently attached by a malicious page the way a cookie can (only
+       code that already holds the secret token can produce one), so it's
+       its own CSRF defense, and it's the tunnel client's proof of identity
+       in place of the cookie.
 
-    2. Tunnel cookie auth — unchanged: localhost dev traffic (no
-       tunnel-forwarding headers) passes freely once past gate 1; tunnel
-       traffic must carry the nala_token cookie."""
-    if request.method in auth.STATE_CHANGING_METHODS:
+    2. CSRF Origin allow-list — every state-changing request (POST/PUT/
+       PATCH/DELETE) without a valid bearer token, regardless of
+       tunnel-vs-local classification below. Local traffic used to skip
+       this entirely, which is exactly what let a malicious page in the
+       user's own browser blind-POST to 127.0.0.1:8642 and dispatch real
+       actions with zero auth (confirmed live). GET routes are
+       unaffected — nothing here mutates state.
+
+    3. Tunnel cookie auth — unchanged: localhost dev traffic (no
+       tunnel-forwarding headers) passes freely once past gate 2; tunnel
+       traffic must carry the nala_token cookie (or the bearer token from
+       gate 1)."""
+    bearer_ok = auth.is_bearer_authenticated(request.headers.get("authorization"))
+
+    if request.method in auth.STATE_CHANGING_METHODS and not bearer_ok:
         origin = request.headers.get("origin")
         if not auth.is_allowed_origin(origin, request.headers.get("host")):
             events.log_event(
@@ -68,7 +80,7 @@ async def access_token_gate(request: Request, call_next):
     if request.url.path == "/login" or not auth.is_tunnel_request(request.headers):
         return await call_next(request)
 
-    if auth.is_authenticated(request.cookies.get(auth.COOKIE_NAME)):
+    if bearer_ok or auth.is_authenticated(request.cookies.get(auth.COOKIE_NAME)):
         return await call_next(request)
 
     if request.url.path.startswith("/api/"):
