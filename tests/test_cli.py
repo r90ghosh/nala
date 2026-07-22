@@ -1,6 +1,6 @@
 from nala import chokepoint, events
 from nala.brain import RawIntent
-from nala.cli import _memory_context_for_turn, process_turn, render_transcript
+from nala.cli import _memory_context_for_turn, _speak, process_turn, render_transcript
 
 
 def test_process_turn_capture_task_via_fake_brain(data_dir, fake_backlog, make_fake_brain):
@@ -82,6 +82,35 @@ def test_process_turn_passes_memory_context_through_to_brain(data_dir):
     assert brain.calls == 1
     assert brain.received_memory_context is not None
     assert "Priya" in brain.received_memory_context
+
+
+def test_speak_synthesizes_and_plays_then_cleans_up_temp_file(monkeypatch, data_dir):
+    import nala.cli as cli_module
+
+    written_paths = []
+
+    def fake_synthesize(text, **kw):
+        assert text == "hello briefing"
+        return b"FAKEWAV"
+
+    played = []
+
+    def fake_run(cmd, check=True):
+        assert cmd[0] == "afplay"
+        path = cmd[1]
+        written_paths.append(path)
+        played.append(path)
+        assert open(path, "rb").read() == b"FAKEWAV"
+
+    import nala.voice as voice_module
+    monkeypatch.setattr(voice_module, "synthesize", fake_synthesize)
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    _speak("hello briefing")
+
+    assert len(played) == 1
+    import os
+    assert not os.path.exists(written_paths[0])  # cleaned up after playback
 
 
 def test_confirm_prefix_bypasses_brain(data_dir, fake_backlog, make_fake_brain):

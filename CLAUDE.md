@@ -34,10 +34,40 @@ the action path. Repo: https://github.com/r90ghosh/nala
   turn recalled the seeded graph and correctly proposed+dispatched a `memory_write` with
   provenance; the verification-only node was deleted afterward so no fabricated data
   persists in the real `~/.nala/memory.db`.
-- **Next (Session 4 / M6):** voice — local Parakeet STT + Kokoro TTS, push-to-talk via
-  `/api/voice/turn`, low-confidence transcription asks rather than guessing (loud failure
-  at the perception boundary, same principle as everywhere else in the action path). The
-  mic button in the UI is already stubbed and disabled ("voice arrives with M6").
+- **Session 4 complete (2026-07-22):** M6 — fully local voice. `nala/voice.py`: STT
+  (parakeet-mlx, `mlx-community/parakeet-tdt-0.6b-v2`) and TTS (mlx-audio Kokoro,
+  `mlx-community/Kokoro-82M-bf16`, voice af_heart), both lazy-loaded singletons, `GET
+  /api/voice/warmup` to preload. `POST /api/voice/turn`: WAV upload → transcribe →
+  low-confidence gate (ask_repeat, never runs the turn — loud-failure clause 3) →
+  `process_turn` (same path as `/api/turn`) → synthesize the reply →
+  `{transcript, reply_text, status, confirm_token, events, audio_b64}`. Client: push-to-talk
+  everywhere (top-bar mic + a big round hero button in Chat), hand-rolled Float32→WAV
+  encoding via `ScriptProcessorNode` (~30 lines, no build step), autoplay of the reply audio
+  reusing the same `AudioContext` the PTT press already unlocked (the iOS gesture trick),
+  toast notifications for `ask_repeat` and for PTT used outside Chat mode. Purpose rail is
+  real now — `GET /api/purposes` backs it, 'M5' tags gone, all 8 shown as plain informational
+  rows (not buttons) with their actual risk badges, since a purpose activates per-signal, not
+  per-session. `--briefing --speak` synthesizes and `afplay`s the briefing. 190 tests green.
+  Commits M6a→M6b pushed to main.
+  - **Real finding beyond the spec:** MLX arrays/streams are thread-affine
+    (`mx.new_stream`'s own docstring says as much). A model loaded on one thread and used
+    from another — which `asyncio.to_thread` can and does do across separate calls — broke
+    live with `RuntimeError: There is no Stream(cpu, N) in current thread`, reproduced
+    against the running server before the fix. Fixed by funneling every MLX-touching call
+    (model load and inference, both STT and TTS) through one dedicated single-worker
+    `ThreadPoolExecutor` in `nala/voice.py`, so it always runs on the same thread for the
+    process's lifetime; `asyncio.to_thread` still wraps the outer calls so the event loop
+    never blocks.
+  - **Also found (contrary to the spec's uncertainty):** parakeet-mlx DOES expose confidence
+    (`AlignedSentence.confidence`) — used as a secondary signal, not primary: a real test
+    against ~200ms of silence still produced a hallucinated "Yeah." at ~0.8 confidence, so
+    the duration/transcript-length heuristics remain the primary defense.
+  - The `uv`/`VIRTUAL_ENV`/cwd gotcha from the spec: setting `VIRTUAL_ENV` defensively at
+    `nala/voice.py`'s import time was sufficient in direct testing (synthesis succeeded from
+    a different cwd with `VIRTUAL_ENV` unset too) — no cwd requirement or subprocess
+    isolation was needed beyond the MLX thread-pinning fix above.
+- **Next (Session 5 / M7):** iOS app (Expo) — push, location, health, voice over the
+  `com.nala.tunnel` cloudflared tunnel. Same core, a second client.
 
 ## Commands
 
@@ -45,10 +75,12 @@ the action path. Repo: https://github.com/r90ghosh/nala
 .venv/bin/python -m nala.cli               # REPL (typed turns; `transcript`, `confirm <token>`)
 .venv/bin/python -m nala.cli --turn "…"    # one-shot
 .venv/bin/python -m nala.cli --briefing    # compose + print the morning briefing
+.venv/bin/python -m nala.cli --briefing --speak  # also synthesize + afplay it aloud
 .venv/bin/python -m nala.scheduler         # watchers + triage, one asyncio loop, runs forever
 .venv/bin/python -m nala.serve             # FastAPI feed on 127.0.0.1:8642 (localhost only)
 .venv/bin/python -m nala.google_auth       # one-time interactive OAuth flow (run manually, never by a watcher)
 .venv/bin/python -m nala.seed_memory       # seed the starter graph (7 projects + 'you') — idempotent
+.venv/bin/python scripts/voice_smoke.py    # live smoke test: `say` -> /api/voice/turn -> prints transcript/reply/timing
 .venv/bin/pytest -q                        # full suite — must be green before any commit
 bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed exceptions
 ```
@@ -98,6 +130,24 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
 - `nala/purposes.py` deliberately doesn't cache — `load_all()`/`risk_profile_for()` re-read and
   re-validate the YAML on every call. Fine at this scale; don't "optimize" it without checking
   whether tests rely on picking up manifest edits without a process restart.
+- **MLX arrays/streams are thread-affine.** Never call `parakeet_mlx`/`mlx_audio` functions from
+  an arbitrary thread (e.g. a fresh `asyncio.to_thread` call, which can land on a different pool
+  thread each time) — a model loaded on one thread breaks with `RuntimeError: There is no
+  Stream(cpu, N) in current thread` the moment a later call lands on another. `nala/voice.py`
+  funnels every MLX-touching call (model load, `transcribe()`, `generate_audio()`) through one
+  dedicated single-worker `_MLX_EXECUTOR` so it's always the same thread. If you add more
+  MLX-backed functionality, route it through that same executor rather than a bare
+  `asyncio.to_thread` or a new thread pool.
+- `nala/voice.py` sets `VIRTUAL_ENV` defensively at import time (mlx-audio's TTS pipeline has
+  been reported to shell out to `uv` on some first-run code paths) — verified sufficient via
+  direct testing, no cwd requirement needed on top of it.
+- `parakeet_mlx`'s `AlignedResult`/`AlignedSentence` DO expose a real `.confidence` (geometric
+  mean of token confidences) — don't assume it's unavailable. It's a secondary signal in
+  `voice.gate_low_confidence`, not primary: real testing showed ~200ms of silence can still
+  produce a confident-looking hallucinated transcript, so duration/transcript-length checks are
+  the primary defense.
+- Voice tests never load the real STT/TTS models — `voice._get_stt_model`/`_get_tts_model`/
+  `generate_audio` are monkeypatched with fakes throughout `tests/test_voice.py`.
 
 ## Session checklist
 

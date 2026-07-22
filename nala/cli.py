@@ -4,6 +4,9 @@ that's awaiting confirmation."""
 
 import argparse
 import json
+import subprocess
+import tempfile
+from pathlib import Path
 
 from nala import chokepoint, events, purposes, reconciler
 from nala.brain import Brain, BrainError
@@ -115,6 +118,19 @@ def _run_turn(utterance: str, *, brain: Brain, session_id: str) -> str:
     return result.message
 
 
+def _speak(text: str) -> None:
+    """Lazy voice import — only `--briefing --speak` needs the MLX/Kokoro
+    stack loaded; every other CLI invocation shouldn't pay that import cost."""
+    from nala import voice
+    audio_bytes = voice.synthesize(text)
+    tmp_path = Path(tempfile.mkstemp(suffix=".wav")[1])
+    tmp_path.write_bytes(audio_bytes)
+    try:
+        subprocess.run(["afplay", str(tmp_path)], check=True)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _startup_reconcile(session_id: str) -> None:
     try:
         with loud_failure(session_id, "startup", "startup reconciliation"):
@@ -129,6 +145,7 @@ def main():
     parser = argparse.ArgumentParser(prog="nala")
     parser.add_argument("--turn", help="run a single turn and exit")
     parser.add_argument("--briefing", action="store_true", help="compose and print the morning briefing")
+    parser.add_argument("--speak", action="store_true", help="with --briefing, also synthesize and play it aloud (afplay)")
     parser.add_argument("command", nargs="?", choices=["transcript", "pending"], default=None)
     args = parser.parse_args()
 
@@ -141,7 +158,10 @@ def main():
         return
 
     if args.briefing:
-        print(compose_briefing())
+        text = compose_briefing()
+        print(text)
+        if args.speak:
+            _speak(text)
         return
 
     session_id = events.new_id()

@@ -7,28 +7,30 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------- purposes
-const PURPOSES = [
-  { name: 'Projects', risk: 'act+confirm', active: true },
-  { name: 'Finance', m5: true },
-  { name: 'Baby', m5: true },
-  { name: 'Relationships', m5: true },
-  { name: 'Home', m5: true },
-  { name: 'News', m5: true },
-  { name: 'Interests', m5: true },
-  { name: 'Purchase', m5: true },
-];
+const RISK_BADGE_CLASS = { act_confirm: 'risk-amber', notify_only: 'risk-violet', read_only: 'risk-slate' };
+const RISK_DOT_COLOR = { act_confirm: 'var(--amber)', notify_only: 'var(--violet)', read_only: 'var(--faint)' };
 
-function renderPurposeRail() {
+// Purposes are informational rows here, not a session-scoped selector — a
+// purpose activates per-signal (triage assigns it per proposal), never per
+// session, so nothing in this rail is clickable and none of the 8 should
+// look more "real" than the others.
+async function renderPurposeRail() {
   const nav = document.getElementById('purposeNav');
-  nav.innerHTML = PURPOSES.map(p => `
-    <button class="purpose-btn ${p.active ? 'active' : 'dimmed'}" ${p.m5 ? 'disabled' : ''}>
-      <div class="row1">
-        <span class="p-dot" style="background:${p.active ? 'var(--accent)' : '#5a6678'}"></span>
-        <span class="p-name">${esc(p.name)}</span>
+  try {
+    const resp = await fetch('/api/purposes');
+    const purposeList = await resp.json();
+    nav.innerHTML = purposeList.map(p => `
+      <div class="purpose-row">
+        <div class="row1">
+          <span class="p-dot" style="background:${RISK_DOT_COLOR[p.risk_profile] || 'var(--faint)'}"></span>
+          <span class="p-name">${esc(p.display_name)}</span>
+        </div>
+        <span class="risk-badge ${RISK_BADGE_CLASS[p.risk_profile] || 'risk-slate'}">${esc(p.risk_profile.replace('_', ' '))}</span>
       </div>
-      ${p.active ? `<span class="risk-badge risk-amber">${esc(p.risk)}</span>` : '<span class="tag-m5">M5</span>'}
-    </button>
-  `).join('');
+    `).join('');
+  } catch (e) {
+    nav.innerHTML = '<div class="purpose-row-empty">purposes unreachable</div>';
+  }
 }
 
 // ---------------------------------------------------------------- mode switching
@@ -474,6 +476,264 @@ async function sendChatMessage() {
 
 chatSendEl.addEventListener('click', sendChatMessage);
 chatInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+// ---------------------------------------------------------------- push-to-talk (PTT)
+const micBtnEl = document.getElementById('micBtn');
+const pttBtnChatEl = document.getElementById('pttBtnChat');
+const pttStatusChatEl = document.getElementById('pttStatusChat');
+const toastContainerEl = document.getElementById('toastContainer');
+const pttButtons = [micBtnEl, pttBtnChatEl];
+
+const PTT_MAX_RECORD_MS = 14500; // just under the server's 15s cap — never trigger a spurious 413
+
+let pttState = 'idle'; // idle | recording | processing | error
+let audioContext = null; // created (and resumed) inside the pointerdown gesture, reused for playback too — the iOS unlock trick
+let mediaStream = null;
+let sourceNode = null;
+let scriptNode = null;
+let silentGainNode = null;
+let recordedChunks = [];
+let recordingSampleRate = 16000;
+let recordStartMs = 0;
+let elapsedTimerId = null;
+let autoStopTimerId = null;
+
+function showToast(text, ms = 4000) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = text;
+  toastContainerEl.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 250);
+  }, ms);
+}
+
+function currentMode() {
+  const active = document.querySelector('.mode-tab.active');
+  return active ? active.dataset.mode : 'monitor';
+}
+
+function disablePttButtons(msg) {
+  pttButtons.forEach(btn => {
+    if (!btn) return;
+    btn.disabled = true;
+    btn.title = msg;
+    btn.classList.add('ptt-error');
+  });
+  if (pttStatusChatEl) pttStatusChatEl.textContent = msg;
+  showToast(msg);
+}
+
+function setPttState(state, label) {
+  pttState = state;
+  pttButtons.forEach(btn => {
+    if (!btn) return;
+    btn.classList.toggle('recording', state === 'recording');
+    btn.classList.toggle('processing', state === 'processing');
+  });
+  if (pttStatusChatEl) {
+    if (label) pttStatusChatEl.textContent = label;
+    else if (state === 'idle') pttStatusChatEl.textContent = 'hold to talk';
+  }
+}
+
+function updateElapsedLabel() {
+  const secs = ((Date.now() - recordStartMs) / 1000).toFixed(1);
+  setPttState('recording', `recording… ${secs}s`);
+}
+
+// ~30 lines: Float32 samples -> a standard 16-bit PCM mono WAV Blob. The
+// server never needs a specific sample rate — parakeet-mlx's own loader
+// resamples via ffmpeg regardless — so this just encodes at whatever rate
+// the AudioContext actually captured (usually 44100 or 48000).
+function encodeWavFromFloat32(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeString = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    disablePttButtons('voice not supported in this browser');
+    return false;
+  }
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    const msg = e.name === 'NotAllowedError' ? 'microphone permission denied — check browser settings' : 'microphone unavailable';
+    disablePttButtons(msg);
+    return false;
+  }
+
+  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioContext.state === 'suspended') {
+    try { await audioContext.resume(); } catch (e) { /* best effort — a failed resume here just means playback may be silent later */ }
+  }
+
+  sourceNode = audioContext.createMediaStreamSource(mediaStream);
+  scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+  silentGainNode = audioContext.createGain();
+  silentGainNode.gain.value = 0; // must reach a destination for onaudioprocess to fire reliably, but must never be audible
+
+  recordedChunks = [];
+  recordingSampleRate = audioContext.sampleRate;
+
+  scriptNode.onaudioprocess = (e) => {
+    recordedChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+
+  sourceNode.connect(scriptNode);
+  scriptNode.connect(silentGainNode);
+  silentGainNode.connect(audioContext.destination);
+
+  return true;
+}
+
+function stopCaptureAndEncode() {
+  if (sourceNode) sourceNode.disconnect();
+  if (scriptNode) scriptNode.disconnect();
+  if (silentGainNode) silentGainNode.disconnect();
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  sourceNode = null;
+  scriptNode = null;
+  silentGainNode = null;
+  mediaStream = null;
+
+  let total = 0;
+  for (const c of recordedChunks) total += c.length;
+  const merged = new Float32Array(total);
+  let offset = 0;
+  for (const c of recordedChunks) { merged.set(c, offset); offset += c.length; }
+  recordedChunks = [];
+
+  return encodeWavFromFloat32(merged, recordingSampleRate);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function playReplyAudio(base64Wav) {
+  // Reuses the same AudioContext the PTT press already resumed — on iOS,
+  // audio unlock is tied to the context instance, not to each play() call,
+  // so this still autoplays even though we're well past the original
+  // pointerdown gesture by the time the reply comes back.
+  if (!base64Wav || !audioContext) return;
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(base64ToArrayBuffer(base64Wav));
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    source.start(0);
+  } catch (e) {
+    // playback failure is non-fatal — the transcript/reply text are already shown
+  }
+}
+
+async function sendVoiceTurn(blob) {
+  const formData = new FormData();
+  formData.append('audio', blob, 'ptt.wav');
+
+  let data;
+  try {
+    const resp = await fetch('/api/voice/turn', { method: 'POST', body: formData });
+    data = await resp.json();
+    if (!resp.ok) {
+      showToast(data.error || 'voice turn failed');
+      return;
+    }
+  } catch (e) {
+    showToast('voice turn failed — network error');
+    return;
+  }
+
+  if (data.ask_repeat) {
+    showToast("didn't catch that — try again");
+    return;
+  }
+
+  if (currentMode() === 'chat') {
+    appendUserBubble(data.transcript || '(unclear)');
+    appendAssistantBubble(data);
+  } else {
+    // Not on the Chat tab — no thread to append to. Toast + the observability
+    // feed (already polling) is how this turn surfaces instead.
+    showToast(`"${data.transcript}" — ${(data.reply_text || '').slice(0, 100)}`, 6000);
+  }
+  playReplyAudio(data.audio_b64);
+}
+
+async function beginPtt() {
+  if (pttState !== 'idle') return;
+  const started = await startRecording();
+  if (!started) return;
+
+  setPttState('recording');
+  recordStartMs = Date.now();
+  elapsedTimerId = setInterval(updateElapsedLabel, 200);
+  autoStopTimerId = setTimeout(() => finishPtt(), PTT_MAX_RECORD_MS);
+}
+
+async function finishPtt() {
+  if (pttState !== 'recording') return;
+  clearInterval(elapsedTimerId);
+  clearTimeout(autoStopTimerId);
+  setPttState('processing', 'transcribing…');
+
+  const blob = stopCaptureAndEncode();
+  await sendVoiceTurn(blob);
+
+  setPttState('idle');
+}
+
+function cancelPtt() {
+  if (pttState !== 'recording') return;
+  clearInterval(elapsedTimerId);
+  clearTimeout(autoStopTimerId);
+  stopCaptureAndEncode(); // discard — cancelled, never uploaded
+  setPttState('idle');
+}
+
+function wirePttButton(btn) {
+  if (!btn) return;
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); beginPtt(); });
+  btn.addEventListener('pointerup', () => finishPtt());
+  btn.addEventListener('pointerleave', () => cancelPtt());
+  btn.addEventListener('pointercancel', () => cancelPtt());
+}
+pttButtons.forEach(wirePttButton);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && pttState === 'recording') cancelPtt();
+});
 
 // ---------------------------------------------------------------- memory graph
 const KIND_COLORS = {

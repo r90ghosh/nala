@@ -39,8 +39,8 @@
         <div class="chip spend-chip" id="spendChip">spend: —</div>
         <div class="spend-dropdown" id="spendDropdown"></div>
       </div>
-      <button class="mic-btn" id="micBtn" disabled title="voice arrives with M6">
-        🎙<span>&nbsp;push-to-talk</span>
+      <button class="mic-btn" id="micBtn" title="push to talk">
+        <span class="mic-icon">🎙</span><span class="mic-label">&nbsp;push-to-talk</span>
       </button>
     </div>
 
@@ -114,6 +114,12 @@
         <div class="chat-thread" id="chatThread">
           <div class="chat-empty">say something — turns go through the same chokepoint as everything else</div>
         </div>
+        <div class="chat-ptt-row">
+          <button class="ptt-btn-big" id="pttBtnChat" title="hold to talk">
+            <span class="ptt-icon">🎙</span>
+          </button>
+          <div class="ptt-status" id="pttStatusChat">hold to talk</div>
+        </div>
         <div class="chat-input-row">
           <input type="text" id="chatInput" placeholder="Type a message…" autocomplete="off" />
           <button id="chatSend">Send</button>
@@ -168,6 +174,8 @@
   <button class="mtab" data-mobile="actions"><span class="mtab-icon">⚡</span><span class="mtab-label">Actions</span></button>
   <button class="mtab" data-mobile="memory"><span class="mtab-icon">🧠</span><span class="mtab-label">Memory</span></button>
 </nav>
+
+<div class="toast-container" id="toastContainer"></div>
 
 <script src="/static/app.js"></script>
 </body>

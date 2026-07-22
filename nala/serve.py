@@ -171,6 +171,20 @@ def api_get_routing():
     return routing.get_routes()
 
 
+PURPOSE_DISPLAY_ORDER = ["projects", "finance", "baby", "relationships", "home", "news", "interests", "purchase"]
+
+
+@app.get("/api/purposes")
+def api_get_purposes():
+    """Backs the purpose rail — real risk profiles from the manifests, not
+    the placeholder 'M5' tags M4/M5 shipped with."""
+    manifests = purposes.load_all()
+    return [
+        {"name": name, "display_name": manifests[name].display_name, "risk_profile": manifests[name].risk_profile}
+        for name in PURPOSE_DISPLAY_ORDER
+    ]
+
+
 def _run_turn_sync(text: str, turn_id: str | None = None) -> tuple[str, chokepoint.ActionResult]:
     turn_id = turn_id or events.new_id()
     brain = Brain()

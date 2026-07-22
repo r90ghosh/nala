@@ -197,6 +197,23 @@ def test_routing_endpoint_reflects_real_config(data_dir):
     assert tasks == {r["task"]: r["model"] for r in routing.get_routes()}
 
 
+def test_purposes_endpoint_reflects_real_manifests(data_dir):
+    import nala.serve as serve_module
+    client = TestClient(app)
+
+    resp = client.get("/api/purposes")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert [p["name"] for p in data] == serve_module.PURPOSE_DISPLAY_ORDER
+
+    by_name = {p["name"]: p for p in data}
+    assert by_name["projects"]["risk_profile"] == "act_confirm"
+    assert by_name["projects"]["display_name"] == "Projects"
+    assert by_name["relationships"]["risk_profile"] == "notify_only"
+    assert by_name["finance"]["risk_profile"] == "read_only"
+
+
 def test_turn_endpoint_runs_process_turn_and_returns_events(data_dir, tmp_path, monkeypatch):
     root = tmp_path / "projects"
     root.mkdir()
