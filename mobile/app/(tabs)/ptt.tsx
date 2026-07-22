@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { File, Paths } from 'expo-file-system';
+import { File, Paths, UploadType } from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -176,6 +176,7 @@ export default function PttScreen() {
       const file = new File(uri);
       const result = await file.upload(`${pairing.serverUrl}/api/voice/turn`, {
         httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
         fieldName: 'audio',
         mimeType: 'audio/wav',
         headers: { Authorization: `Bearer ${pairing.token}` },
