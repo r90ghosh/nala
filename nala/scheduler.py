@@ -18,7 +18,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from nala import events, triage
+from nala import events, purposes, triage
 from nala.watchers.base import Watcher, run_poll
 from nala.watchers.calendar import CalendarWatcher
 from nala.watchers.git import GitWatcher
@@ -69,6 +69,7 @@ async def run_forever(watchers: list[Watcher] | None = None, data_dir: Path | No
 
 
 def main():
+    purposes.load_all()  # malformed manifest is a loud startup failure, not a silent skip
     asyncio.run(run_forever())
 
 

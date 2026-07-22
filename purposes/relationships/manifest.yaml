@@ -1,0 +1,7 @@
+display_name: Relationships
+risk_profile: notify_only
+watchers: []
+tools_allowed: [memory_write, memory_recall]
+memory_scope: relationships
+briefing_sections: []
+default_tier: cheap

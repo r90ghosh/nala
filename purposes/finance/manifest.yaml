@@ -1,0 +1,7 @@
+display_name: Finance
+risk_profile: read_only
+watchers: []
+tools_allowed: [memory_recall]
+memory_scope: finance
+briefing_sections: []
+default_tier: cheap

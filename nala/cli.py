@@ -5,7 +5,7 @@ that's awaiting confirmation."""
 import argparse
 import json
 
-from nala import chokepoint, events, reconciler
+from nala import chokepoint, events, purposes, reconciler
 from nala.brain import Brain, BrainError
 from nala.briefing import compose_briefing
 from nala.errors import loud_failure
@@ -84,6 +84,8 @@ def _startup_reconcile(session_id: str) -> None:
 
 
 def main():
+    purposes.load_all()  # malformed manifest is a loud startup failure, not a silent skip
+
     parser = argparse.ArgumentParser(prog="nala")
     parser.add_argument("--turn", help="run a single turn and exit")
     parser.add_argument("--briefing", action="store_true", help="compose and print the morning briefing")

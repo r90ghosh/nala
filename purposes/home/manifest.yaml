@@ -1,0 +1,7 @@
+display_name: Home
+risk_profile: act_confirm
+watchers: []
+tools_allowed: [memory_write, memory_recall]
+memory_scope: home
+briefing_sections: []
+default_tier: moderate

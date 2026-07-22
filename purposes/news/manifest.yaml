@@ -1,0 +1,7 @@
+display_name: News
+risk_profile: read_only
+watchers: []
+tools_allowed: [memory_recall]
+memory_scope: news
+briefing_sections: []
+default_tier: cheap

@@ -27,6 +27,7 @@ def _propose_via_triage(fake_ollama, reason="worth doing"):
     _make_signal_event()
     fake_ollama.responses.append(json.dumps({
         "classification": "propose",
+        "purpose": "projects",  # act_confirm — needed to reach awaiting_confirm, same as a direct proposal would
         "reason": reason,
         "capture_task": {"title": "t", "project": "life_os", "priority": "low", "category": "chore"},
     }))

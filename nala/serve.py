@@ -15,12 +15,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from nala import auth, chokepoint, db, events, routing, spend, state
+from nala import auth, chokepoint, db, events, purposes, routing, spend, state
 from nala.brain import Brain
 from nala.cli import process_turn
 from nala.config import get_access_token, get_daily_ceiling, get_ollama_url
 from nala.errors import loud_failure
 from nala.google_auth import get_credentials
+
+purposes.load_all()  # malformed manifest is a loud startup failure, not a silent skip
 
 app = FastAPI(title="Nala")
 

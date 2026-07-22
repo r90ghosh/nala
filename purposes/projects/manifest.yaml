@@ -1,0 +1,7 @@
+display_name: Projects
+risk_profile: act_confirm
+watchers: [gmail, calendar, git]
+tools_allowed: [capture_task, archive_task, report_status, memory_write, memory_recall]
+memory_scope: projects
+briefing_sections: [repo_status, activity, spend]
+default_tier: moderate

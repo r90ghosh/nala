@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from nala import events, reconciler, tools, validation
+from nala import events, purposes, reconciler, tools, validation
 from nala.db import connect, ensure_processed_actions
 from nala.errors import loud_failure
 from nala.spend import SpendCeilingExceeded, check_ceiling
@@ -33,7 +33,7 @@ _HEX_TOKEN = re.compile(r"^[0-9a-f]+$")
 
 @dataclass
 class ActionResult:
-    status: str  # done | failed | rejected | awaiting_confirm | pending
+    status: str  # done | failed | rejected | awaiting_confirm | notified | dismissed | pending
     message: str
     data: dict = field(default_factory=dict)
 
@@ -101,8 +101,8 @@ def _with_origin_line(result: ActionResult, origin: dict) -> ActionResult:
 
 def list_processed_actions(data_dir: Path | None = None, limit: int = 200) -> list[dict]:
     """All processed_actions rows, most recent first, with `origin` attached
-    to awaiting_confirm rows — the one place both the CLI and the web feed
-    get provenance from, so neither has to re-derive it."""
+    to awaiting_confirm/notified rows — the one place both the CLI and the
+    web feed get provenance from, so neither has to re-derive it."""
     conn = connect(data_dir)
     try:
         ensure_processed_actions(conn)
@@ -115,7 +115,7 @@ def list_processed_actions(data_dir: Path | None = None, limit: int = 200) -> li
     result = []
     for row in rows:
         d = dict(row)
-        if d["status"] == "awaiting_confirm":
+        if d["status"] in ("awaiting_confirm", "notified"):
             d["origin"] = derive_origin(d, data_dir)
         result.append(d)
     return result
@@ -135,11 +135,23 @@ def execute_action(
     data_dir: Path | None = None,
     force_confirm: bool = False,
     actor: str | None = None,
+    purpose: str | None = None,
 ) -> ActionResult:
-    """force_confirm: proactive callers (triage, M4+) pass True to require a
-    confirm regardless of the action's own reversibility tag — in M4, every
-    proactively-proposed action is gated, full stop; per-purpose risk
-    profiles (auto/notify/confirm) arrive with purposes in M5.
+    """force_confirm: kept for backward compatibility — proactive callers
+    used to pass True to force a confirm regardless of reversibility. M5
+    replaces that blanket rule with purpose-aware risk gating (below); if
+    `purpose` is given it takes over entirely and force_confirm is ignored.
+    A direct user turn (CLI/chat) passes neither — reversibility alone
+    decides, as always.
+
+    purpose: the triage-assigned purpose for a PROACTIVE dispatch (never
+    set for a direct user turn — risk profiles gate proactive actions only).
+    Read tools (report_status, memory_recall) are exempt; every other
+    action_type gets gated by that purpose's risk_profile: read_only is
+    rejected loudly, notify_only lands as a dismissible 'notified' row with
+    no side effect, act_confirm lands as 'awaiting_confirm' same as today.
+    An unrecognized purpose is treated as notify_only — never guessed into
+    something more permissive.
 
     actor: an optional tag (e.g. "status-cache") embedded in the tool_call/
     tool_result payload for report_status. It exists so a non-user-initiated
@@ -172,6 +184,20 @@ def execute_action(
         return _handle_memory_recall(session_id, turn_id, normalized_args, data_dir)
 
     reversibility = validation.REVERSIBILITY[action_type]
+
+    if purpose is not None:
+        risk_profile = purposes.risk_profile_for(purpose) or "notify_only"
+        if risk_profile == "read_only":
+            events.log_event(
+                session_id, turn_id, "rejected",
+                {"reason": f"purpose '{purpose}' is read_only — write actions are not permitted", "action_type": action_type},
+                level="error", data_dir=data_dir,
+            )
+            return ActionResult(status="rejected", message=f"refused: purpose '{purpose}' is read-only, cannot dispatch '{action_type}'")
+        insert_status = "notified" if risk_profile == "notify_only" else "awaiting_confirm"
+    else:
+        insert_status = "awaiting_confirm" if (reversibility == "irreversible" or force_confirm) else "pending"
+
     key = compute_key(action_type, normalized_args, turn_id)
 
     conn = connect(data_dir)
@@ -188,7 +214,6 @@ def execute_action(
     _checkpoint("before_insert")
 
     now = datetime.now(timezone.utc).isoformat()
-    insert_status = "awaiting_confirm" if (reversibility == "irreversible" or force_confirm) else "pending"
     cur = conn.execute(
         "INSERT OR IGNORE INTO processed_actions "
         "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
@@ -212,6 +237,11 @@ def execute_action(
             status="awaiting_confirm",
             message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
         )
+    if insert_status == "notified":
+        return ActionResult(
+            status="notified",
+            message=f"notify-only proposal — no action taken; type: dismiss {key[:8]}",
+        )
 
     return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
 
@@ -220,12 +250,17 @@ def _resolve_row(row, key: str, session_id: str, turn_id: str, data_dir: Path | 
     """Given an existing processed_actions row (whether found on the initial
     lookup or discovered after losing an INSERT OR IGNORE race), report its
     status without ever dispatching a second side effect."""
-    if row["status"] in ("done", "failed", "rejected"):
+    if row["status"] in ("done", "failed", "rejected", "dismissed"):
         return _replay(row, session_id, turn_id, data_dir)
     if row["status"] == "awaiting_confirm":
         return ActionResult(
             status="awaiting_confirm",
             message=f"irreversible action requires confirmation — type: confirm {key[:8]}",
+        )
+    if row["status"] == "notified":
+        return ActionResult(
+            status="notified",
+            message=f"notify-only proposal — no action taken; type: dismiss {key[:8]}",
         )
     return ActionResult(
         status="pending",
@@ -233,11 +268,12 @@ def _resolve_row(row, key: str, session_id: str, turn_id: str, data_dir: Path | 
     )
 
 
-def _find_awaiting_confirm_row(token: str, *, session_id: str, turn_id: str, data_dir: Path | None):
-    """Shared by confirm_action and reject_action (CLI and web both call
-    these — this is the one place token resolution happens). Returns
-    (row, None) on a clean single match, or (None, ActionResult) with the
-    rejection already logged."""
+def _find_row_by_status(token: str, status: str, *, session_id: str, turn_id: str, data_dir: Path | None):
+    """Shared by confirm_action, reject_action, and dismiss_action (CLI and
+    web all call these — this is the one place token resolution happens, for
+    whichever status a caller is trying to resolve). Returns (row, None) on
+    a clean single match, or (None, ActionResult) with the rejection already
+    logged."""
     token = token.strip().lower()
 
     if not token or not _HEX_TOKEN.match(token):
@@ -252,30 +288,30 @@ def _find_awaiting_confirm_row(token: str, *, session_id: str, turn_id: str, dat
     ensure_processed_actions(conn)
     # Match in Python against the literal token — never SQL LIKE on raw user
     # input, since '%'/'_' are LIKE wildcards that would match any row.
-    candidates = conn.execute("SELECT * FROM processed_actions WHERE status='awaiting_confirm'").fetchall()
+    candidates = conn.execute("SELECT * FROM processed_actions WHERE status = ?", (status,)).fetchall()
     conn.close()
     matches = [r for r in candidates if r["idempotency_key"].startswith(token)]
 
     if not matches:
-        events.log_event(session_id, turn_id, "rejected", {"reason": "no pending confirmation matches token", "token": token}, level="error", data_dir=data_dir)
-        return None, ActionResult(status="rejected", message=f"no pending confirmation matches '{token}'")
+        events.log_event(session_id, turn_id, "rejected", {"reason": f"no pending {status} action matches token", "token": token}, level="error", data_dir=data_dir)
+        return None, ActionResult(status="rejected", message=f"no {status} action matches '{token}'")
 
     if len(matches) > 1:
         events.log_event(
             session_id, turn_id, "rejected",
-            {"reason": "ambiguous confirm token", "token": token, "match_count": len(matches)},
+            {"reason": "ambiguous token", "token": token, "match_count": len(matches)},
             level="error", data_dir=data_dir,
         )
         return None, ActionResult(
             status="rejected",
-            message=f"ambiguous token '{token}' matches {len(matches)} pending confirmations — provide more characters",
+            message=f"ambiguous token '{token}' matches {len(matches)} {status} actions — provide more characters",
         )
 
     return matches[0], None
 
 
 def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
-    row, rejection = _find_awaiting_confirm_row(token, session_id=session_id, turn_id=turn_id, data_dir=data_dir)
+    row, rejection = _find_row_by_status(token, "awaiting_confirm", session_id=session_id, turn_id=turn_id, data_dir=data_dir)
     if rejection is not None:
         return rejection
 
@@ -314,7 +350,7 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
 
 
 def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
-    row, rejection = _find_awaiting_confirm_row(token, session_id=session_id, turn_id=turn_id, data_dir=data_dir)
+    row, rejection = _find_row_by_status(token, "awaiting_confirm", session_id=session_id, turn_id=turn_id, data_dir=data_dir)
     if rejection is not None:
         return rejection
 
@@ -337,6 +373,35 @@ def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path |
 
     events.log_event(session_id, turn_id, "rejected", {"reason": "operator rejected proposed action", "idempotency_key": key}, data_dir=data_dir)
     return _with_origin_line(ActionResult(status="rejected", message=f"rejected {row['action_type']} #{key[:8]}"), origin)
+
+
+def dismiss_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
+    """Acknowledges a notify_only proposal. No side effect ever happened for
+    a 'notified' row (that's the whole point of notify_only), so dismissal
+    is purely bookkeeping — there's nothing to undo."""
+    row, rejection = _find_row_by_status(token, "notified", session_id=session_id, turn_id=turn_id, data_dir=data_dir)
+    if rejection is not None:
+        return rejection
+
+    origin = derive_origin(dict(row), data_dir)
+    key = row["idempotency_key"]
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = connect(data_dir)
+    ensure_processed_actions(conn)
+    cur = conn.execute(
+        "UPDATE processed_actions SET status='dismissed', resolved_at=? WHERE idempotency_key=? AND status='notified'",
+        (now, key),
+    )
+    conn.commit()
+    conn.close()
+
+    if cur.rowcount == 0:
+        events.log_event(session_id, turn_id, "rejected", {"reason": "notification was already resolved elsewhere", "idempotency_key": key}, level="error", data_dir=data_dir)
+        return _with_origin_line(ActionResult(status="rejected", message="this notification was already dismissed elsewhere"), origin)
+
+    events.log_event(session_id, turn_id, "rejected", {"reason": "operator dismissed notification", "idempotency_key": key}, data_dir=data_dir)
+    return _with_origin_line(ActionResult(status="dismissed", message=f"dismissed {row['action_type']} #{key[:8]}"), origin)
 
 
 def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:
@@ -394,6 +459,8 @@ def _replay(row, session_id: str, turn_id: str, data_dir: Path | None) -> Action
         return ActionResult(status="done", message=message, data=result or {})
     if row["status"] == "failed":
         return ActionResult(status="failed", message=f"(already failed — replayed) {error}", data={})
+    if row["status"] == "dismissed":
+        return ActionResult(status="dismissed", message="(already dismissed — replayed)", data={})
     return ActionResult(status="rejected", message=f"(already rejected — replayed) {error}", data={})
 
 
