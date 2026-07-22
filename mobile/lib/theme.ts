@@ -1,3 +1,5 @@
+import { Platform, type TextStyle } from 'react-native';
+
 /**
  * Shared color palette — matches the web Mission Control's :root variables
  * (nala/static/style.css) so the iOS app doesn't invent a second visual
@@ -50,4 +52,43 @@ export const STATUS_COLORS: Record<string, string> = {
   rejected: colors.faint,
   dismissed: colors.faint,
   pending: colors.amber,
+};
+
+/** 4/8/12/16/20/24/32 spacing scale — every screen should size gaps and
+ * padding from this, not a one-off number. */
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  base: 16,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
+};
+
+export const radii = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  pill: 999,
+};
+
+// React Native doesn't ship JetBrains Mono the way the web client loads it
+// from Google Fonts — bundling a custom font is more infra than this pass
+// needs, so token/id text uses the platform's built-in monospace face.
+const monoFontFamily = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
+
+export const typography: Record<string, TextStyle> = {
+  display: { fontSize: 30, fontWeight: '700', color: '#fff' },
+  title: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  section: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: colors.faint,
+  },
+  body: { fontSize: 15, fontWeight: '400', color: colors.ink },
+  caption: { fontSize: 12, fontWeight: '400', color: colors.faint },
+  mono: { fontFamily: monoFontFamily, fontSize: 13, color: colors.ink },
 };

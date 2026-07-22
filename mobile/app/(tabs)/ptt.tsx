@@ -1,6 +1,8 @@
+import { Feather } from '@expo/vector-icons';
 import { File, Paths } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   type AudioPlayer,
@@ -13,9 +15,10 @@ import {
   useAudioRecorder,
 } from 'expo-audio';
 
+import { EmptyState } from '../../components/EmptyState';
 import { base64ToUint8Array } from '../../lib/base64';
 import { getPairing } from '../../lib/pairing';
-import { colors } from '../../lib/theme';
+import { colors, radii, spacing, typography } from '../../lib/theme';
 import { isAskRepeat, type VoiceTurnResponse } from '../../lib/types';
 
 // Recorded as uncompressed 16-bit PCM WAV on iOS specifically, so the
@@ -48,16 +51,26 @@ const WAV_RECORDING_OPTIONS: RecordingOptions = {
 
 type PttState = 'idle' | 'recording' | 'processing' | 'error';
 
+type Turn = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  audioB64?: string;
+};
+
 export default function PttScreen() {
+  const insets = useSafeAreaInsets();
   const recorder = useAudioRecorder(WAV_RECORDING_OPTIONS);
   const [state, setState] = useState<PttState>('idle');
-  const [statusText, setStatusText] = useState('hold to talk');
-  const [transcript, setTranscript] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState('Hold to talk');
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [micDisabled, setMicDisabled] = useState(false);
   const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordStart = useRef(0);
   const playerRef = useRef<AudioPlayer | null>(null);
+  const listRef = useRef<FlatList<Turn>>(null);
+  const pulse1 = useRef(new Animated.Value(0)).current;
+  const pulse2 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     return () => {
@@ -66,6 +79,36 @@ export default function PttScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (state !== 'recording') {
+      pulse1.stopAnimation();
+      pulse2.stopAnimation();
+      pulse1.setValue(0);
+      pulse2.setValue(0);
+      return;
+    }
+    const anim1 = Animated.loop(
+      Animated.timing(pulse1, { toValue: 1, duration: 1400, easing: Easing.out(Easing.ease), useNativeDriver: true })
+    );
+    const anim2 = Animated.loop(
+      Animated.sequence([
+        Animated.delay(600),
+        Animated.timing(pulse2, { toValue: 1, duration: 1400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    anim1.start();
+    anim2.start();
+    return () => {
+      anim1.stop();
+      anim2.stop();
+    };
+  }, [state, pulse1, pulse2]);
+
+  function addTurn(turn: Turn) {
+    setTurns((prev) => [...prev, turn]);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+  }
+
   async function beginRecording() {
     if (state !== 'idle') return;
 
@@ -73,7 +116,7 @@ export default function PttScreen() {
     if (!permission.granted) {
       setMicDisabled(true);
       setState('error');
-      setStatusText('microphone permission denied — enable it in Settings');
+      setStatusText('Microphone permission denied — enable it in Settings');
       return;
     }
 
@@ -83,17 +126,15 @@ export default function PttScreen() {
       recorder.record();
     } catch (e) {
       setState('error');
-      setStatusText(e instanceof Error ? e.message : 'could not start recording');
+      setStatusText(e instanceof Error ? e.message : 'Could not start recording');
       return;
     }
 
     setState('recording');
-    setTranscript(null);
-    setReplyText(null);
     recordStart.current = Date.now();
     elapsedTimer.current = setInterval(() => {
       const secs = ((Date.now() - recordStart.current) / 1000).toFixed(1);
-      setStatusText(`recording… ${secs}s`);
+      setStatusText(`Recording… ${secs}s`);
     }, 200);
   }
 
@@ -101,7 +142,7 @@ export default function PttScreen() {
     if (state !== 'recording') return;
     if (elapsedTimer.current) clearInterval(elapsedTimer.current);
     setState('processing');
-    setStatusText('transcribing…');
+    setStatusText('Transcribing…');
 
     try {
       await recorder.stop();
@@ -126,22 +167,21 @@ export default function PttScreen() {
       const data: VoiceTurnResponse = JSON.parse(result.body);
 
       if (isAskRepeat(data)) {
-        setTranscript(data.transcript);
-        setReplyText(null);
-        setStatusText(`didn't catch that — ${data.reason}`);
+        setStatusText(`Didn't catch that — ${data.reason}`);
+        setTimeout(() => setStatusText('Hold to talk'), 2500);
       } else {
-        setTranscript(data.transcript);
-        setReplyText(data.reply_text);
-        setStatusText('hold to talk');
+        addTurn({ id: `${data.turn_id}-u`, role: 'user', text: data.transcript });
+        addTurn({ id: `${data.turn_id}-a`, role: 'assistant', text: data.reply_text, audioB64: data.audio_b64 });
+        setStatusText('Hold to talk');
         playReplyAudio(data.audio_b64);
       }
       setState('idle');
     } catch (e) {
       setState('error');
-      setStatusText(e instanceof Error ? e.message : 'voice turn failed');
+      setStatusText(e instanceof Error ? e.message : 'Voice turn failed');
       setTimeout(() => {
         setState('idle');
-        setStatusText('hold to talk');
+        setStatusText('Hold to talk');
       }, 2500);
     }
   }
@@ -153,7 +193,7 @@ export default function PttScreen() {
       // best-effort — we're discarding this recording regardless
     });
     setState('idle');
-    setStatusText('hold to talk');
+    setStatusText('Hold to talk');
   }
 
   function playReplyAudio(base64Wav: string) {
@@ -178,43 +218,80 @@ export default function PttScreen() {
   const isError = state === 'error';
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.transcriptArea}>
-        {transcript ? (
-          <View style={styles.bubbleUser}>
-            <Text style={styles.bubbleUserText}>{transcript}</Text>
-          </View>
-        ) : (
-          <Text style={styles.hint}>hold the button and talk — turns go through the same chokepoint as everything else</Text>
-        )}
-        {replyText ? (
-          <View style={styles.bubbleAssistant}>
-            <Text style={styles.bubbleAssistantText}>{replyText}</Text>
-          </View>
-        ) : null}
-      </ScrollView>
-
-      <View style={styles.dock}>
-        <Text style={[styles.statusText, isError && styles.statusError]}>{statusText}</Text>
-        <Pressable
-          disabled={micDisabled}
-          onPressIn={beginRecording}
-          onPressOut={finishRecording}
-          onTouchCancel={cancelRecording}
-          style={[
-            styles.pttButton,
-            isRecording && styles.pttButtonRecording,
-            isProcessing && styles.pttButtonProcessing,
-            isError && styles.pttButtonError,
-            micDisabled && styles.pttButtonDisabled,
-          ]}
-        >
-          {isProcessing ? (
-            <ActivityIndicator color={colors.accent} />
-          ) : (
-            <Text style={styles.pttIcon}>🎙</Text>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {turns.length === 0 ? (
+        <EmptyState
+          icon="mic"
+          title="Press and hold to talk"
+          subtitle="Hold the button below, say what's on your mind, and release — Nala replies out loud."
+        />
+      ) : (
+        <FlatList
+          ref={listRef}
+          data={turns}
+          keyExtractor={(t) => t.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <View style={[styles.bubbleRow, item.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAssistant]}>
+              <View style={[styles.bubble, item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
+                <Text style={styles.bubbleText}>{item.text}</Text>
+                {item.role === 'assistant' && item.audioB64 ? (
+                  <Pressable style={styles.replayBtn} onPress={() => playReplyAudio(item.audioB64 as string)} hitSlop={8}>
+                    <Feather name="volume-2" size={14} color={colors.accent} />
+                    <Text style={styles.replayText}>Replay</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
           )}
-        </Pressable>
+        />
+      )}
+
+      <View style={[styles.dock, { paddingBottom: insets.bottom + spacing.base }]}>
+        <Text style={[styles.statusText, isError && styles.statusError]}>{statusText}</Text>
+        <View style={styles.pttWrap}>
+          {isRecording ? (
+            <>
+              <Animated.View
+                style={[
+                  styles.pulseRing,
+                  {
+                    opacity: pulse1.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
+                    transform: [{ scale: pulse1.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+                  },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  styles.pulseRing,
+                  {
+                    opacity: pulse2.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
+                    transform: [{ scale: pulse2.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+                  },
+                ]}
+              />
+            </>
+          ) : null}
+          <Pressable
+            disabled={micDisabled}
+            onPressIn={beginRecording}
+            onPressOut={finishRecording}
+            onTouchCancel={cancelRecording}
+            style={[
+              styles.pttButton,
+              isRecording && styles.pttButtonRecording,
+              isProcessing && styles.pttButtonProcessing,
+              isError && styles.pttButtonError,
+              micDisabled && styles.pttButtonDisabled,
+            ]}
+          >
+            {isProcessing ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <Feather name="mic" size={44} color={isRecording ? colors.red : colors.accent} />
+            )}
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -222,42 +299,47 @@ export default function PttScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.base },
-  transcriptArea: { flexGrow: 1, padding: 16, justifyContent: 'flex-end', gap: 12 },
-  hint: { color: colors.faint, fontSize: 13, textAlign: 'center', marginTop: 40 },
+  listContent: { padding: spacing.base, gap: spacing.md },
+  bubbleRow: { flexDirection: 'row' },
+  bubbleRowUser: { justifyContent: 'flex-end' },
+  bubbleRowAssistant: { justifyContent: 'flex-start' },
+  bubble: { maxWidth: '85%', borderRadius: radii.lg, padding: spacing.md, gap: spacing.xs },
   bubbleUser: {
-    alignSelf: 'flex-end',
     backgroundColor: 'rgba(56,189,248,0.12)',
     borderColor: 'rgba(56,189,248,0.28)',
     borderWidth: 1,
-    borderRadius: 16,
     borderTopRightRadius: 4,
-    padding: 12,
-    maxWidth: '85%',
   },
-  bubbleUserText: { color: colors.ink, fontSize: 14 },
   bubbleAssistant: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.panel2,
     borderColor: colors.hair,
     borderWidth: 1,
-    borderRadius: 16,
     borderTopLeftRadius: 4,
-    padding: 12,
-    maxWidth: '85%',
   },
-  bubbleAssistantText: { color: colors.ink, fontSize: 14 },
+  bubbleText: { ...typography.body, lineHeight: 20 },
+  replayBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
+  replayText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
   dock: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingTop: spacing.lg,
     borderTopColor: colors.hair,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  statusText: { color: colors.faint, fontSize: 11, marginBottom: 14 },
+  statusText: { ...typography.caption, marginBottom: spacing.md },
   statusError: { color: colors.amber },
+  pttWrap: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: colors.red,
+  },
   pttButton: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     borderWidth: 2,
     borderColor: colors.hair,
     backgroundColor: colors.panel2,
@@ -268,5 +350,4 @@ const styles = StyleSheet.create({
   pttButtonProcessing: { borderColor: colors.accent, backgroundColor: 'rgba(56,189,248,0.14)' },
   pttButtonError: { borderColor: colors.amber, backgroundColor: 'rgba(251,191,36,0.12)' },
   pttButtonDisabled: { opacity: 0.4 },
-  pttIcon: { fontSize: 38 },
 });

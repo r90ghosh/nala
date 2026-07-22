@@ -1,6 +1,7 @@
+import { Feather } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,11 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '../components/Button';
 import { validatePairing } from '../lib/api';
 import { usePairingContext } from '../lib/PairingContext';
 import { savePairing } from '../lib/pairing';
-import { colors } from '../lib/theme';
+import { colors, radii, spacing, typography } from '../lib/theme';
 
 // Simulator default — the Simulator can reach the Mac's own localhost
 // directly. A real device needs the tunnel URL instead (https://…), which
@@ -21,18 +24,25 @@ import { colors } from '../lib/theme';
 const DEFAULT_SERVER_URL = 'http://127.0.0.1:8642';
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [token, setToken] = useState('');
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { markPaired } = usePairingContext();
+
+  async function handlePaste() {
+    const clip = await Clipboard.getStringAsync();
+    if (clip) setToken(clip.trim());
+  }
 
   async function handlePair() {
     setError(null);
     const trimmedUrl = serverUrl.trim().replace(/\/+$/, '');
     const trimmedToken = token.trim();
     if (!trimmedUrl || !trimmedToken) {
-      setError('server URL and access token are both required');
+      setError('Server URL and access token are both required.');
       return;
     }
 
@@ -41,7 +51,7 @@ export default function OnboardingScreen() {
     setChecking(false);
 
     if (!ok) {
-      setError("couldn't reach the server with that URL/token — check both and try again");
+      setError("Couldn't reach the server with that URL and token. Double-check both and try again.");
       return;
     }
 
@@ -51,85 +61,120 @@ export default function OnboardingScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Text style={styles.title}>Nala</Text>
-      <Text style={styles.subtitle}>Pair with your Mac server</Text>
+      <View style={styles.content}>
+        <View style={styles.hero}>
+          <View style={styles.mark}>
+            <Text style={styles.markText}>N</Text>
+          </View>
+          <Text style={styles.wordmark}>Nala</Text>
+          <Text style={styles.tagline}>Your proactive assistant, on your Mac.</Text>
+        </View>
 
-      <Text style={styles.label}>Server URL</Text>
-      <TextInput
-        style={styles.input}
-        value={serverUrl}
-        onChangeText={setServerUrl}
-        placeholder={DEFAULT_SERVER_URL}
-        placeholderTextColor={colors.faint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-      />
+        <View style={styles.form}>
+          <Text style={typography.section}>Server URL</Text>
+          <TextInput
+            style={[styles.input, { marginTop: spacing.xs }]}
+            value={serverUrl}
+            onChangeText={setServerUrl}
+            placeholder={DEFAULT_SERVER_URL}
+            placeholderTextColor={colors.faint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
 
-      <Text style={styles.label}>Access token</Text>
-      <TextInput
-        style={styles.input}
-        value={token}
-        onChangeText={setToken}
-        placeholder="paste your NALA_ACCESS_TOKEN"
-        placeholderTextColor={colors.faint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        secureTextEntry
-      />
+          <Text style={[typography.section, { marginTop: spacing.lg }]}>Access token</Text>
+          <View style={[styles.inputRow, { marginTop: spacing.xs }]}>
+            <TextInput
+              style={[styles.input, styles.tokenInput, typography.mono]}
+              value={token}
+              onChangeText={setToken}
+              placeholder="paste your NALA_ACCESS_TOKEN"
+              placeholderTextColor={colors.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={!tokenVisible}
+            />
+            <Pressable style={styles.inlineIconBtn} onPress={() => setTokenVisible((v) => !v)} hitSlop={10}>
+              <Feather name={tokenVisible ? 'eye-off' : 'eye'} size={18} color={colors.mute} />
+            </Pressable>
+            <Pressable style={styles.pasteBtn} onPress={handlePaste} hitSlop={10}>
+              <Feather name="clipboard" size={14} color={colors.accent} />
+              <Text style={styles.pasteBtnText}>Paste</Text>
+            </Pressable>
+          </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <View style={styles.errorBox}>
+              <Feather name="alert-triangle" size={14} color={colors.red} />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
 
-      <Pressable
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-        onPress={handlePair}
-        disabled={checking}
-      >
-        {checking ? (
-          <ActivityIndicator color={colors.base} />
-        ) : (
-          <Text style={styles.buttonText}>Pair</Text>
-        )}
-      </Pressable>
+          <Button label="Pair" onPress={handlePair} loading={checking} style={{ marginTop: spacing.xl }} />
+        </View>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.base, padding: 24, justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 34, fontWeight: '700', marginBottom: 4 },
-  subtitle: { color: colors.mute, fontSize: 14, marginBottom: 32 },
-  label: {
-    color: colors.mute,
-    fontSize: 11,
-    marginBottom: 6,
-    marginTop: 18,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    fontWeight: '600',
+  container: { flex: 1, backgroundColor: colors.base },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.xxl },
+  hero: { alignItems: 'center', gap: spacing.sm },
+  mark: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(56,189,248,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
+  markText: { color: colors.accent, fontSize: 26, fontWeight: '700' },
+  wordmark: { ...typography.display, fontSize: 34 },
+  tagline: { ...typography.body, color: colors.mute, textAlign: 'center' },
+  form: { width: '100%' },
   input: {
     backgroundColor: colors.panel2,
     borderColor: colors.hair,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: radii.md,
+    padding: spacing.md,
     color: colors.ink,
     fontSize: 15,
-  },
-  error: { color: colors.red, marginTop: 18, fontSize: 13, lineHeight: 18 },
-  button: {
-    backgroundColor: colors.accent,
-    borderRadius: 8,
-    padding: 15,
-    alignItems: 'center',
-    marginTop: 28,
     minHeight: 48,
-    justifyContent: 'center',
   },
-  buttonPressed: { opacity: 0.85 },
-  buttonText: { color: colors.base, fontWeight: '700', fontSize: 15 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  tokenInput: { flex: 1 },
+  inlineIconBtn: { padding: spacing.xs },
+  pasteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(56,189,248,0.1)',
+    borderColor: 'rgba(56,189,248,0.3)',
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  pasteBtnText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(248,113,113,0.1)',
+    borderColor: 'rgba(248,113,113,0.3)',
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  errorText: { color: colors.red, fontSize: 13, lineHeight: 18, flex: 1 },
 });
