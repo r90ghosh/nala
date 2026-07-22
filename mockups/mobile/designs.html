@@ -290,6 +290,15 @@ svg{display:block}
 .dir-c .replay .i{width:12px;height:12px;stroke:#c4b5fd}
 .dir-c .wave{display:flex;align-items:center;gap:3px;height:20px;margin-top:8px}
 .dir-c .wave span{width:3px;border-radius:3px;background:linear-gradient(180deg,#c4b5fd,#38bdf8);opacity:.8}
+/* C composer — type-to-correct alongside voice */
+.dir-c .composer{width:100%;margin-top:14px;display:flex;align-items:center;gap:8px;border-radius:20px;padding:7px 7px 7px 16px}
+.dir-c .composer input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#eaf0fb;font-size:13px;font-family:inherit}
+.dir-c .composer input::placeholder{color:#8b8fa8}
+.dir-c .cbtn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:0 0 34px}
+.dir-c .cmic{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14)}
+.dir-c .cmic .i{width:16px;height:16px;stroke:#c4b5fd}
+.dir-c .csend{background:linear-gradient(180deg,#c4b5fd,#9a7ef0)}
+.dir-c .csend .i{width:15px;height:15px;stroke:#150c2e;fill:#150c2e}
 /* C feed */
 .dir-c .c-head{padding:2px 18px 10px}
 .dir-c .c-head .greet{font-size:11.5px;letter-spacing:.22em;text-transform:uppercase;color:#9a91c4;font-weight:600}
@@ -722,6 +731,11 @@ svg{display:block}
                   <div class="wave"><span class="wf-bar" style="height:18px;animation-delay:0s"></span><span class="wf-bar" style="height:18px;animation-delay:.12s"></span><span class="wf-bar" style="height:18px;animation-delay:.24s"></span><span class="wf-bar" style="height:18px;animation-delay:.06s"></span><span class="wf-bar" style="height:18px;animation-delay:.3s"></span><span class="wf-bar" style="height:18px;animation-delay:.18s"></span><span class="wf-bar" style="height:18px;animation-delay:.09s"></span><span class="wf-bar" style="height:18px;animation-delay:.27s"></span></div>
                   <div class="replay"><span class="rr"><svg class="i" width="12" height="12" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6M4 4v5h5"/></svg></span>Replay reply</div>
                 </div>
+              </div>
+              <div class="composer glass">
+                <input placeholder="Type to correct, or hold the orb…" />
+                <span class="cbtn cmic"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3"/></svg></span>
+                <span class="cbtn csend"><svg class="i" viewBox="0 0 24 24"><path d="M4 12l15-7-5 15-3-6-7-2z"/></svg></span>
               </div>
             </div>
           </div>
