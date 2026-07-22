@@ -101,11 +101,23 @@ Finance/News/Interests/Purchase = read-only, Relationships/Baby = notify-only.
 - **Finance:** SimpleFIN Bridge (~$1.50/mo) or CSV drop-folder. Read-only.
 - **Skip:** Find My scraping, WhatsApp bridges, call audio (impossible).
 
-## Voice (M6+)
+## Voice (M6+) — open-source, fully local (locked 2026-07-22, replaces vendor Option B)
 
-LiveKit (Cloud) transport; streaming STT = ElevenLabs Scribe v2 RT (default) or Deepgram
-Flux; TTS = Cartesia Sonic (system `say` acceptable pre-polish). Pipeline, not
-speech-to-speech — the brain and dispatch stay in our code.
+Wispr Flow-style push-to-talk: record → transcribe on release → turn pipeline → spoken
+reply. All inference on the Mac; clients (browser, iOS app) are mic + speaker only.
+
+- **STT:** Parakeet via `parakeet-mlx` (`mlx-community/parakeet-tdt-0.6b-v2`) — verified
+  on this machine, sub-second per utterance. Fallback: whisper.cpp large-v3-turbo.
+- **VAD:** silero-vad (auto end-of-speech for PTT release).
+- **TTS:** Kokoro-82M via `mlx-audio` (`mlx-community/Kokoro-82M-bf16`, voice af_heart) —
+  verified, ~real-time. Requires `misaki[en]`; mlx_audio shells out to `uv` internally, so
+  the voice module must run with cwd=project root (or VIRTUAL_ENV set).
+- **Transport:** plain POST/WebSocket audio upload to `POST /api/voice/turn` (audio in →
+  transcript + reply audio out). No LiveKit in v1 — PTT doesn't need WebRTC. iOS Safari
+  requires HTTPS for mic access → the tunnel URL, not LAN IP.
+- Low-confidence transcription → ask to repeat (loud-failure clause 3), never guess.
+- Vendor stack (Scribe/Deepgram + Cartesia + LiveKit) remains a drop-in upgrade path
+  behind the same interface if latency/quality ever demands it.
 
 ## Clients
 
@@ -146,7 +158,7 @@ nala/
 | M3 | `processed_actions`, idempotency keys, two-phase writes, startup reconciler, confirm-gate stub, spend ledger + ceiling | idempotent retryable writes, reconciled; gate + budget live | 1 |
 | M4 | Watchers (gmail, calendar, git) + Ollama triage + morning briefing (text) + minimal web UI (feed) | proactivity through the same chokepoint | 2 |
 | M5 | Graph memory (nodes/edges/observations, provenance, confirmable writes) + Relationships/Baby purposes | memory as gated writes | 3 |
-| M6 | Voice on Mac: LiveKit + Scribe/Flux STT + Cartesia TTS; low-confidence → ask | loud failure at the perception boundary | 4 |
+| M6 | Voice: local Parakeet STT + Kokoro TTS, PTT via /api/voice/turn; low-confidence → ask | loud failure at the perception boundary | 4 |
 | M7 | iOS app (Expo): push, location, health, voice over tunnel `com.nala.tunnel` | same core, two clients | 5 |
 | M8 | Finance (SimpleFIN read-only), News/Purchase watchers, digests | thin purposes ride existing rails | 6 |
 | M9 | First gated real-world actions: send iMessage, create calendar event | irreversibility guard, for real | 6+ |
@@ -182,7 +194,8 @@ two-thread overlapping-dispatch test.
   backlog server at :8421 ✓. Nothing else.
 - **S2:** Google Cloud OAuth creds (Gmail+Calendar), `brew install ollama` + pull a 3B/8B.
 - **S3:** Full Disk Access for iMessage reads.
-- **S4:** ElevenLabs or Deepgram key, Cartesia key, LiveKit Cloud project.
+- **S4:** none — voice stack is fully local (parakeet-mlx + mlx-audio + misaki[en],
+  already installed and smoke-tested; model weights already downloaded).
 - **S5:** Apple dev account (have), clone tunnel plist.
 - **S6:** SimpleFIN Bridge token (verify bank coverage first).
 
