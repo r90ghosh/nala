@@ -6,6 +6,20 @@ the action path. Repo: https://github.com/r90ghosh/nala
 
 ## Status
 
+- **Overnight run complete (2026-07-22):** M4.5 (Mission Control web UI), M6 (local voice
+  — Parakeet STT + Kokoro TTS, PTT), M7 (Expo iOS app: pairing/feed/PTT/actions), plus a
+  critical-CSRF fix wave (Origin gate + bearer auth for the native client), all reviewed and
+  pushed to main (HEAD `a551168`). 206 Python tests green. **Now running as launchd services**
+  (`~/Library/LaunchAgents/com.nala.{server,scheduler,briefing}.plist`, sources in `scripts/`)
+  — server + scheduler KeepAlive on login, briefing at 07:30 daily (text→`~/.nala/logs/briefing.log`;
+  add `--speak` to the plist for spoken). Logs in `~/.nala/logs/`. To manage:
+  `launchctl {load,unload} ~/Library/LaunchAgents/com.nala.server.plist`.
+  **Tunnel is an ephemeral cloudflared quick-tunnel** (URL changes on restart → re-pair the
+  iOS app when it does; a stable named tunnel needs a Cloudflare account, deferred).
+  **iOS app auth = `Authorization: Bearer <NALA_ACCESS_TOKEN>`** which bypasses BOTH the cookie
+  and the Origin/CSRF gate by design (a bearer can't be auto-attached by a malicious page the
+  way a cookie can) — verified: no-bearer spoofed-origin still 403, wrong bearer still 403.
+
 - **Session 1 complete (2026-07-21):** M0–M3 spine built, reviewed, hardened. Typed-text
   CLI works end to end against the real backlog (:8421) and real Claude API. 24 tests
   green. Commits M0→M3 + review-fix pushed to main.
