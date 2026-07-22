@@ -1,4 +1,4 @@
-from nala.watchers import state
+from nala import state
 from nala.watchers.gmail import GmailWatcher
 
 

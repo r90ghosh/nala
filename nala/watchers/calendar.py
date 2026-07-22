@@ -5,7 +5,7 @@ start time changes."""
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from nala.watchers import state
+from nala import state
 from nala.watchers.base import Signal, Watcher
 
 LOOKAHEAD_HOURS = 48

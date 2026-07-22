@@ -3,9 +3,9 @@ working trees and ahead/behind changes since the last poll."""
 
 from pathlib import Path
 
+from nala import state
 from nala.config import PROJECTS, get_projects_root
 from nala.tools.report_status import _git_info
-from nala.watchers import state
 from nala.watchers.base import Signal, Watcher
 
 

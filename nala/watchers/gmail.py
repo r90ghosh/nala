@@ -4,7 +4,7 @@ existing inbox is "new", so it emits no signals for that poll."""
 
 from pathlib import Path
 
-from nala.watchers import state
+from nala import state
 from nala.watchers.base import Signal, Watcher
 
 

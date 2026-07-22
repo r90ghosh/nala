@@ -1,14 +1,15 @@
 """`python -m nala.scheduler` runs the watchers on one asyncio loop, each on
-its own interval. Every poll's blocking I/O (git subprocess, Google API
-calls, sqlite) runs via asyncio.to_thread so one slow watcher never stalls
-the others — the same reason Phase A made the chokepoint guard
-thread-independent: multiple watcher threads can end up dispatching through
-execute_action concurrently once triage (M4c) lands."""
+its own interval, with a triage pass after every watcher poll. Every poll's
+blocking I/O (git subprocess, Google API calls, Ollama call, sqlite) runs via
+asyncio.to_thread so one slow watcher never stalls the others — the same
+reason Phase A made the chokepoint guard thread-independent: multiple
+watcher threads end up dispatching proposals through execute_action
+concurrently once triage is in the loop."""
 
 import asyncio
 from pathlib import Path
 
-from nala import events
+from nala import events, triage
 from nala.watchers.base import Watcher, run_poll
 from nala.watchers.calendar import CalendarWatcher
 from nala.watchers.git import GitWatcher
@@ -29,6 +30,7 @@ async def _watcher_loop(watcher: Watcher, data_dir: Path | None) -> None:
     while True:
         turn_id = events.new_id()
         await asyncio.to_thread(run_poll, watcher, session_id=SESSION_ID, turn_id=turn_id, data_dir=data_dir)
+        await asyncio.to_thread(triage.run_pass, turn_id=turn_id, data_dir=data_dir)
         await asyncio.sleep(watcher.interval_seconds)
 
 

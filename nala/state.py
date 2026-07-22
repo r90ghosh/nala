@@ -1,8 +1,10 @@
-"""Per-watcher watermark ('last-seen cursor'), so a poll only turns genuinely
-NEW items into signals — never re-signals something already seen. Stored as
-JSON in a small `watermarks` table in the same events.db file; each watcher
-owns its own cursor shape (gmail: a historyId, calendar: signaled event ids
-+ start times, git: last-known per-repo branch/dirty/ahead/behind)."""
+"""Named watermark ('last-seen cursor') storage, so a poll or pass only
+processes genuinely NEW items — never re-processes something already seen.
+Stored as JSON in a small `watermarks` table in the same events.db file.
+Used by watchers (gmail: a historyId, calendar: signaled event ids + start
+times, git: last-known per-repo branch/dirty/ahead/behind) and by triage
+(last-triaged signal event id) — anything that needs "where did I leave
+off" state keyed by its own name."""
 
 import json
 from datetime import datetime, timezone
@@ -23,17 +25,17 @@ def _ensure(conn) -> None:
     )
 
 
-def get_cursor(watcher: str, data_dir: Path | None = None) -> dict:
+def get_cursor(name: str, data_dir: Path | None = None) -> dict:
     conn = connect(data_dir)
     try:
         _ensure(conn)
-        row = conn.execute("SELECT cursor_json FROM watermarks WHERE watcher = ?", (watcher,)).fetchone()
+        row = conn.execute("SELECT cursor_json FROM watermarks WHERE watcher = ?", (name,)).fetchone()
         return json.loads(row["cursor_json"]) if row else {}
     finally:
         conn.close()
 
 
-def set_cursor(watcher: str, cursor: dict, data_dir: Path | None = None) -> None:
+def set_cursor(name: str, cursor: dict, data_dir: Path | None = None) -> None:
     now = datetime.now(timezone.utc).isoformat()
     conn = connect(data_dir)
     try:
@@ -41,7 +43,7 @@ def set_cursor(watcher: str, cursor: dict, data_dir: Path | None = None) -> None
         conn.execute(
             "INSERT INTO watermarks (watcher, cursor_json, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT(watcher) DO UPDATE SET cursor_json=excluded.cursor_json, updated_at=excluded.updated_at",
-            (watcher, json.dumps(cursor), now),
+            (name, json.dumps(cursor), now),
         )
         conn.commit()
     finally:

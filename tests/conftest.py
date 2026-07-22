@@ -128,3 +128,58 @@ class FakeBrain:
 @pytest.fixture
 def make_fake_brain():
     return FakeBrain
+
+
+class OllamaStore:
+    def __init__(self):
+        self.responses: list[str] = []  # queued raw `content` strings, popped in order
+        self.down = False
+        self.calls = 0
+
+
+def _make_ollama_handler(store: OllamaStore):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_POST(self):
+            if not self.path.startswith("/chat/completions"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            store.calls += 1
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)  # drain the request body
+
+            if store.down or not store.responses:
+                self.send_response(503)
+                self.end_headers()
+                return
+
+            content = store.responses.pop(0)
+            body = json.dumps({
+                "id": "chatcmpl-fake",
+                "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+    return Handler
+
+
+@pytest.fixture
+def fake_ollama(monkeypatch):
+    store = OllamaStore()
+    handler = _make_ollama_handler(store)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("NALA_OLLAMA_URL", f"http://127.0.0.1:{port}")
+    yield store
+    server.shutdown()
+    server.server_close()

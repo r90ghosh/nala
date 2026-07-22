@@ -48,3 +48,9 @@ def get_projects_root() -> Path:
 def get_google_client_secret_path() -> Path:
     default = str(Path("~/.nala/google_client_secret.json").expanduser())
     return Path(os.environ.get("NALA_GOOGLE_CLIENT_SECRET", default)).expanduser()
+
+
+def get_ollama_url() -> str:
+    # Already includes the /v1 suffix (OpenAI-compatible path), e.g.
+    # "http://localhost:11434/v1" — callers append "/chat/completions" etc.
+    return os.environ.get("NALA_OLLAMA_URL", "http://localhost:11434/v1")

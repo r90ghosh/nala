@@ -10,6 +10,7 @@ RATES = {
     "claude-sonnet-5": {"input": 3.0, "output": 15.0},
     "claude-haiku-4-5": {"input": 1.0, "output": 5.0},
     "claude-opus-4-8": {"input": 15.0, "output": 75.0},
+    "llama3.2:3b": {"input": 0.0, "output": 0.0},  # local via Ollama — free, but ledgered so the record stays complete
 }
 
 

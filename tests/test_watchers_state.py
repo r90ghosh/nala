@@ -1,4 +1,4 @@
-from nala.watchers import state
+from nala import state
 
 
 def test_watermark_roundtrip(data_dir):

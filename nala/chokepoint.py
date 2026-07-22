@@ -55,7 +55,12 @@ def execute_action(
     turn_id: str,
     session_id: str,
     data_dir: Path | None = None,
+    force_confirm: bool = False,
 ) -> ActionResult:
+    """force_confirm: proactive callers (triage, M4+) pass True to require a
+    confirm regardless of the action's own reversibility tag — in M4, every
+    proactively-proposed action is gated, full stop; per-purpose risk
+    profiles (auto/notify/confirm) arrive with purposes in M5."""
     try:
         check_ceiling(data_dir)
     except SpendCeilingExceeded as exc:
@@ -95,7 +100,7 @@ def execute_action(
     _checkpoint("before_insert")
 
     now = datetime.now(timezone.utc).isoformat()
-    insert_status = "awaiting_confirm" if reversibility == "irreversible" else "pending"
+    insert_status = "awaiting_confirm" if (reversibility == "irreversible" or force_confirm) else "pending"
     cur = conn.execute(
         "INSERT OR IGNORE INTO processed_actions "
         "(idempotency_key, turn_id, action_type, reversibility, args_json, status, created_at) "
