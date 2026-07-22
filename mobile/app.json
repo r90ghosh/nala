@@ -32,6 +32,13 @@
       "expo-status-bar",
       "expo-secure-store",
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0faf1513-515f-49f9-9918-dcd7600fb7a6"
+      }
+    },
+    "owner": "amg90"
   }
 }
