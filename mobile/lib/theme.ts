@@ -1,40 +1,59 @@
 import { Platform, type TextStyle } from 'react-native';
 
 /**
- * Shared color palette — matches the web Mission Control's :root variables
- * (nala/static/style.css) so the iOS app doesn't invent a second visual
- * language for the same product.
+ * Ambient / voice-first palette — near-black glass over a violet→cyan glow
+ * ground (mockups/mobile/designs.html, Direction C). Token *names* are kept
+ * stable from the prior Mission Control palette so every screen/component
+ * that reads `colors.X` re-skins automatically; only the values changed.
  */
 export const colors = {
-  base: '#0a0e14',
-  panel: '#0f131b',
-  panel2: '#111827',
-  hair: '#1e2430',
-  ink: '#e5edf5',
-  mute: '#8a97a8',
-  faint: '#5a6678',
-  accent: '#38bdf8',
+  base: '#06060c',
+  panel: '#120f1c',
+  panel2: 'rgba(255,255,255,0.07)',
+  hair: 'rgba(255,255,255,0.14)',
+  ink: '#eaf0fb',
+  mute: '#a9b0c6',
+  faint: '#6d7288',
+  accent: '#a78bfa',
   emerald: '#34d399',
   amber: '#fbbf24',
   red: '#f87171',
   violet: '#a78bfa',
 };
 
-/** Feed event type -> color, matching app.js's TYPE_COLORS exactly. */
+/** Violet→cyan accent gradient — primary buttons, the orb, active states. */
+export const accentGradient = ['#a78bfa', '#38bdf8'] as const;
+/** Dark ink for text/icons placed directly on the accent gradient. */
+export const accentOnColor = '#150c2e';
+
+/** The ambient ground: near-black base + soft violet/cyan/pink glows,
+ * applied behind every screen (see components/AmbientBackground.tsx). */
+export const ground = { top: '#0a0912', bottom: '#06060c' };
+export const glows = {
+  violetTop: { rgb: '167,139,250', opacity: 0.26 },
+  cyanBottomRight: { rgb: '56,189,248', opacity: 0.18 },
+  pinkBottomLeft: { rgb: '236,120,190', opacity: 0.1 },
+};
+/** The orb's core gradient (components/Orb.tsx). */
+export const orbStops = ['#d9ccff', '#a78bfa', '#6d4fd6', '#38bdf8'];
+
+/** Feed event type -> color, pastel tints tuned for the glass/dark ground
+ * (was matching the web Mission Control's app.js exactly; kept the same
+ * semantic mapping, lightened for contrast against the ambient background). */
 export const TYPE_COLORS: Record<string, string> = {
-  signal: '#22d3ee',
-  triage: '#94a3b8',
-  utterance: '#38bdf8',
-  llm_request: '#a78bfa',
-  llm_response: '#a78bfa',
-  tool_call: '#fbbf24',
-  tool_result: '#34d399',
-  memory_write: '#a78bfa',
-  rejected: '#fbbf24',
-  error: '#f87171',
-  briefing: '#94a3b8',
-  stt_result: '#94a3b8',
-  tts_result: '#94a3b8',
+  signal: '#7dd3fc',
+  triage: '#c4b5fd',
+  utterance: '#7dd3fc',
+  llm_request: '#c4b5fd',
+  llm_response: '#c4b5fd',
+  tool_call: '#6ee7b7',
+  tool_result: '#6ee7b7',
+  memory_write: '#fcd34d',
+  rejected: '#fcd34d',
+  error: '#fca5a5',
+  briefing: '#aab2c6',
+  stt_result: '#aab2c6',
+  tts_result: '#aab2c6',
 };
 
 /** Purpose risk_profile -> badge color, matching the web purpose rail. */
@@ -70,6 +89,8 @@ export const radii = {
   sm: 8,
   md: 12,
   lg: 16,
+  xl: 20,
+  xxl: 24,
   pill: 999,
 };
 
@@ -79,8 +100,8 @@ export const radii = {
 const monoFontFamily = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
 
 export const typography: Record<string, TextStyle> = {
-  display: { fontSize: 30, fontWeight: '700', color: '#fff' },
-  title: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  display: { fontSize: 30, fontWeight: '700', color: colors.ink },
+  title: { fontSize: 20, fontWeight: '700', color: colors.ink },
   section: {
     fontSize: 12,
     fontWeight: '600',

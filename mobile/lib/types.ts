@@ -52,6 +52,16 @@ export type VoiceTurnAskRepeat = {
 
 export type VoiceTurnResponse = VoiceTurnDone | VoiceTurnAskRepeat;
 
+/** Response shape of POST /api/turn — the typed-text counterpart to
+ * /api/voice/turn, minus the transcript/audio fields (see serve.py). */
+export type TextTurnResponse = {
+  turn_id: string;
+  reply_text: string;
+  status: string;
+  confirm_token: string | null;
+  events: FeedEvent[];
+};
+
 export function isAskRepeat(r: VoiceTurnResponse): r is VoiceTurnAskRepeat {
   return 'ask_repeat' in r && r.ask_repeat === true;
 }

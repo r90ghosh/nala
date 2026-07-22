@@ -12,11 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AmbientBackground } from '../components/AmbientBackground';
 import { Button } from '../components/Button';
+import { Orb } from '../components/Orb';
 import { validatePairing } from '../lib/api';
 import { usePairingContext } from '../lib/PairingContext';
 import { savePairing } from '../lib/pairing';
-import { colors, radii, spacing, typography } from '../lib/theme';
+import { colors, ground, radii, spacing, typography } from '../lib/theme';
 
 // Simulator default — the Simulator can reach the Mac's own localhost
 // directly. A real device needs the tunnel URL instead (https://…), which
@@ -60,17 +62,17 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.root}>
+      <AmbientBackground />
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <View style={styles.content}>
         <View style={styles.hero}>
-          <View style={styles.mark}>
-            <Text style={styles.markText}>N</Text>
-          </View>
-          <Text style={styles.wordmark}>Nala</Text>
-          <Text style={styles.tagline}>Your proactive assistant, on your Mac.</Text>
+          <Orb size={94} showRings={false} />
+          <Text style={styles.wordmark}>Wake Nala</Text>
+          <Text style={styles.tagline}>Connect to the server on your Mac, and Nala comes alive on this device.</Text>
         </View>
 
         <View style={styles.form}>
@@ -115,36 +117,32 @@ export default function OnboardingScreen() {
           ) : null}
 
           <Button label="Pair" onPress={handlePair} loading={checking} style={{ marginTop: spacing.xl }} />
+
+          <View style={styles.secure}>
+            <Feather name="lock" size={13} color={colors.faint} />
+            <Text style={styles.secureText}>Stays on your local network</Text>
+          </View>
         </View>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.base },
+  root: { flex: 1, backgroundColor: ground.bottom, overflow: 'hidden' },
+  container: { flex: 1 },
   content: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, gap: spacing.xxl },
   hero: { alignItems: 'center', gap: spacing.sm },
-  mark: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.lg,
-    backgroundColor: 'rgba(56,189,248,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  markText: { color: colors.accent, fontSize: 26, fontWeight: '700' },
-  wordmark: { ...typography.display, fontSize: 34 },
+  wordmark: { ...typography.display, fontSize: 27, marginTop: spacing.xs },
   tagline: { ...typography.body, color: colors.mute, textAlign: 'center' },
   form: { width: '100%' },
   input: {
     backgroundColor: colors.panel2,
     borderColor: colors.hair,
+    borderTopColor: 'rgba(255,255,255,0.22)',
     borderWidth: 1,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: spacing.md,
     color: colors.ink,
     fontSize: 15,
@@ -157,8 +155,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(56,189,248,0.1)',
-    borderColor: 'rgba(56,189,248,0.3)',
+    backgroundColor: 'rgba(167,139,250,0.14)',
+    borderColor: 'rgba(167,139,250,0.35)',
     borderWidth: 1,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.sm,
@@ -177,4 +175,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   errorText: { color: colors.red, fontSize: 13, lineHeight: 18, flex: 1 },
+  secure: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, marginTop: spacing.lg },
+  secureText: { color: colors.faint, fontSize: 11.5 },
 });

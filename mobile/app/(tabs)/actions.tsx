@@ -73,7 +73,7 @@ function ActionCard({
           />
           <Button
             label="Reject"
-            variant="danger"
+            variant="ghost"
             disabled={resolving}
             onPress={() => onResolve(token, 'reject')}
             style={styles.actionBtn}
