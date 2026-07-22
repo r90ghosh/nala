@@ -11,6 +11,8 @@ RATES = {
     "claude-haiku-4-5": {"input": 1.0, "output": 5.0},
     "claude-opus-4-8": {"input": 15.0, "output": 75.0},
     "llama3.2:3b": {"input": 0.0, "output": 0.0},  # local via Ollama — free, but ledgered so the record stays complete
+    "parakeet-tdt-0.6b": {"input": 0.0, "output": 0.0},  # local STT (parakeet-mlx) — same reasoning
+    "kokoro-82m": {"input": 0.0, "output": 0.0},  # local TTS (mlx-audio) — same reasoning
 }
 
 

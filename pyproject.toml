@@ -13,6 +13,10 @@ dependencies = [
     "google-auth-oauthlib",
     "fastapi",
     "uvicorn",
+    "python-multipart",
+    "parakeet-mlx",
+    "mlx-audio",
+    "misaki[en]",
 ]
 
 [project.optional-dependencies]

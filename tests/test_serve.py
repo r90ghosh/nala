@@ -334,3 +334,130 @@ def test_dismiss_endpoint_marks_notified_action_dismissed(data_dir):
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "dismissed"
+
+
+def _make_wav_bytes(duration_ms=1000, rate=16000):
+    import io
+    import wave
+    n = int(rate * duration_ms / 1000)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x00\x00" * n)
+    return buf.getvalue()
+
+
+class _FakeVoiceBrain:
+    def decide(self, utterance, *, turn_id=None, session_id=None, memory_context=None):
+        from nala.brain import RawIntent
+        return RawIntent(action_type="report_status", args={})
+
+
+def test_voice_warmup_endpoint_calls_voice_warmup(monkeypatch, data_dir):
+    import nala.serve as serve_module
+    calls = []
+    monkeypatch.setattr(serve_module.voice, "warmup", lambda: calls.append(True))
+
+    client = TestClient(app)
+    resp = client.get("/api/voice/warmup")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ready"
+    assert calls == [True]
+
+
+def test_voice_turn_happy_path(monkeypatch, data_dir, tmp_path):
+    import nala.serve as serve_module
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+
+    monkeypatch.setattr(
+        serve_module.voice, "transcribe",
+        lambda path, **kw: {"text": "what's the status", "duration_ms": 1000, "latency_ms": 50, "confidence": 0.95},
+    )
+    monkeypatch.setattr(serve_module.voice, "synthesize", lambda text, **kw: b"FAKEREPLYWAV")
+    monkeypatch.setattr(serve_module, "Brain", _FakeVoiceBrain)
+
+    client = TestClient(app)
+    resp = client.post("/api/voice/turn", files={"audio": ("a.wav", _make_wav_bytes(), "audio/wav")})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["transcript"] == "what's the status"
+    assert data["status"] == "done"
+    assert "turn_id" in data
+
+    import base64
+    assert base64.b64decode(data["audio_b64"]) == b"FAKEREPLYWAV"
+
+
+def test_voice_turn_ask_repeat_path_never_runs_process_turn(monkeypatch, data_dir):
+    import nala.serve as serve_module
+
+    monkeypatch.setattr(
+        serve_module.voice, "transcribe",
+        lambda path, **kw: {"text": "", "duration_ms": 1000, "latency_ms": 10, "confidence": None},
+    )
+    called = []
+    monkeypatch.setattr(serve_module, "_run_turn_sync", lambda *a, **kw: called.append(True))
+
+    client = TestClient(app)
+    resp = client.post("/api/voice/turn", files={"audio": ("a.wav", _make_wav_bytes(), "audio/wav")})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ask_repeat"] is True
+    assert called == []
+
+
+def test_voice_turn_missing_audio_is_400(data_dir):
+    client = TestClient(app)
+
+    resp = client.post("/api/voice/turn", data={})
+
+    assert resp.status_code == 400
+
+
+def test_voice_turn_malformed_audio_is_400(data_dir):
+    client = TestClient(app)
+
+    resp = client.post("/api/voice/turn", files={"audio": ("a.wav", b"not a real wav file", "audio/wav")})
+
+    assert resp.status_code == 400
+
+
+def test_voice_turn_oversized_bytes_is_413(data_dir):
+    import nala.serve as serve_module
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/voice/turn",
+        files={"audio": ("a.wav", b"\x00" * (serve_module.MAX_VOICE_AUDIO_BYTES + 1), "audio/wav")},
+    )
+
+    assert resp.status_code == 413
+
+
+def test_voice_turn_oversized_duration_is_413(data_dir):
+    client = TestClient(app)
+    long_wav = _make_wav_bytes(duration_ms=20_000, rate=8000)  # well under the byte limit, over the duration limit
+
+    resp = client.post("/api/voice/turn", files={"audio": ("a.wav", long_wav, "audio/wav")})
+
+    assert resp.status_code == 413
+
+
+def test_voice_turn_requires_auth_over_tunnel(monkeypatch, data_dir):
+    monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/voice/turn",
+        files={"audio": ("a.wav", _make_wav_bytes(), "audio/wav")},
+        headers={"cf-connecting-ip": "1.2.3.4"},
+    )
+
+    assert resp.status_code == 401

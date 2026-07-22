@@ -6,21 +6,27 @@ rejection) is identical whether it came from the CLI or the browser.
 The static feed polls every few seconds; no SSE needed at this scale."""
 
 import asyncio
+import base64
+import io
 import time
+import wave
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from nala import auth, chokepoint, db, events, purposes, routing, spend, state
+from nala import auth, chokepoint, db, events, purposes, routing, spend, state, voice
 from nala.brain import Brain
 from nala.cli import process_turn
-from nala.config import get_access_token, get_daily_ceiling, get_ollama_url
+from nala.config import get_access_token, get_daily_ceiling, get_data_dir, get_ollama_url
 from nala.errors import loud_failure
 from nala.google_auth import get_credentials
+
+MAX_VOICE_AUDIO_BYTES = 2 * 1024 * 1024
+MAX_VOICE_AUDIO_DURATION_MS = 15_000
 
 purposes.load_all()  # malformed manifest is a loud startup failure, not a silent skip
 
@@ -165,8 +171,8 @@ def api_get_routing():
     return routing.get_routes()
 
 
-def _run_turn_sync(text: str) -> tuple[str, chokepoint.ActionResult]:
-    turn_id = events.new_id()
+def _run_turn_sync(text: str, turn_id: str | None = None) -> tuple[str, chokepoint.ActionResult]:
+    turn_id = turn_id or events.new_id()
     brain = Brain()
     try:
         with loud_failure(CHAT_SESSION_ID, turn_id, "web turn"):
@@ -205,6 +211,84 @@ async def api_turn(request: Request):
         "status": result.status,
         "confirm_token": confirm_token,
         "events": [dict(row) for row in turn_events],
+    }
+
+
+@app.get("/api/voice/warmup")
+def api_voice_warmup():
+    """Forces both voice models to load now, ahead of the first real PTT
+    request — the load itself takes several seconds and nobody wants that
+    latency mid-conversation."""
+    voice.warmup()
+    return {"status": "ready"}
+
+
+@app.post("/api/voice/turn")
+async def api_voice_turn(audio: UploadFile | None = File(None)):
+    """Same pipeline as /api/turn, but audio in, audio out: save the upload,
+    transcribe, gate on low confidence (loud-failure clause 3 — ask rather
+    than guess), run process_turn, synthesize the reply. Auth-gated by the
+    same middleware as every other /api/ route."""
+    if audio is None:
+        return JSONResponse({"error": "audio is required"}, status_code=400)
+
+    raw = await audio.read()
+    if not raw:
+        return JSONResponse({"error": "audio is required"}, status_code=400)
+    if len(raw) > MAX_VOICE_AUDIO_BYTES:
+        return JSONResponse({"error": f"audio exceeds the {MAX_VOICE_AUDIO_BYTES}-byte limit"}, status_code=413)
+
+    try:
+        with wave.open(io.BytesIO(raw), "rb") as w:
+            rate = w.getframerate()
+            duration_ms = int((w.getnframes() / rate) * 1000) if rate else 0
+    except (wave.Error, EOFError) as exc:
+        return JSONResponse({"error": f"malformed audio: {exc}"}, status_code=400)
+
+    if duration_ms > MAX_VOICE_AUDIO_DURATION_MS:
+        return JSONResponse({"error": f"audio exceeds the {MAX_VOICE_AUDIO_DURATION_MS}ms limit"}, status_code=413)
+
+    turn_id = events.new_id()
+    tmp_dir = get_data_dir() / "tmp_voice"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = tmp_dir / f"upload-{turn_id}.wav"
+    upload_path.write_bytes(raw)
+    try:
+        stt_result = await asyncio.to_thread(voice.transcribe, upload_path, turn_id=turn_id)
+    finally:
+        upload_path.unlink(missing_ok=True)
+
+    ask_repeat, reason = voice.gate_low_confidence(stt_result)
+    if ask_repeat:
+        events.log_event(
+            CHAT_SESSION_ID, turn_id, "rejected",
+            {"reason": f"low-confidence transcription — asking to repeat: {reason}", "transcript": stt_result["text"]},
+            level="error",
+        )
+        return {"ask_repeat": True, "reason": reason, "turn_id": turn_id, "transcript": stt_result["text"]}
+
+    # process_turn and synthesize are both sync and do real work (brain call,
+    # chokepoint dispatch, TTS inference) — never run them inline in the
+    # async handler, same reasoning as /api/turn's own to_thread call.
+    _, result = await asyncio.to_thread(_run_turn_sync, stt_result["text"], turn_id)
+    reply_audio = await asyncio.to_thread(voice.synthesize, result.message, turn_id=turn_id)
+
+    turn_events = events.events_for_turn(turn_id)
+    confirm_token = None
+    if result.status == "awaiting_confirm":
+        rows = chokepoint.list_processed_actions(limit=1000)
+        match = next((r for r in rows if r["turn_id"] == turn_id), None)
+        if match:
+            confirm_token = match["idempotency_key"][:8]
+
+    return {
+        "turn_id": turn_id,
+        "transcript": stt_result["text"],
+        "reply_text": result.message,
+        "status": result.status,
+        "confirm_token": confirm_token,
+        "events": [dict(row) for row in turn_events],
+        "audio_b64": base64.b64encode(reply_audio).decode("ascii"),
     }
 
 
