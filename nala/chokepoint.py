@@ -186,7 +186,20 @@ def execute_action(
     reversibility = validation.REVERSIBILITY[action_type]
 
     if purpose is not None:
-        risk_profile = purposes.risk_profile_for(purpose) or "notify_only"
+        # purposes.risk_profile_for re-reads and re-validates every manifest
+        # on every call (deliberately uncached) — a manifest mid-edit can
+        # throw PurposeManifestError right here. Unlike every sibling
+        # precondition (spend, validation), this had no failure handling of
+        # its own: it would propagate straight out of execute_action, and in
+        # triage.py's per-signal loop that aborts the whole batch mid-loop,
+        # losing watermark progress on every later signal too. Same
+        # loud_failure + controlled-rejection treatment as everything else.
+        try:
+            with loud_failure(session_id, turn_id, "purpose risk-profile lookup", data_dir):
+                risk_profile = purposes.risk_profile_for(purpose) or "notify_only"
+        except Exception as exc:
+            return ActionResult(status="rejected", message=f"refused: could not resolve risk profile for purpose '{purpose}': {exc}")
+
         if risk_profile == "read_only":
             events.log_event(
                 session_id, turn_id, "rejected",

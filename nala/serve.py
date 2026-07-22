@@ -43,8 +43,28 @@ _status_cache: dict = {"payload": None, "ts": 0.0}
 
 @app.middleware("http")
 async def access_token_gate(request: Request, call_next):
-    """Localhost dev traffic (no tunnel-forwarding headers) always passes
-    freely. Tunnel traffic must carry the nala_token cookie."""
+    """Two independent gates:
+
+    1. CSRF Origin allow-list — every state-changing request (POST/PUT/
+       PATCH/DELETE), regardless of tunnel-vs-local classification below.
+       Local traffic used to skip this entirely, which is exactly what let
+       a malicious page in the user's own browser blind-POST to
+       127.0.0.1:8642 and dispatch real actions with zero auth (confirmed
+       live). GET routes are unaffected — nothing here mutates state.
+
+    2. Tunnel cookie auth — unchanged: localhost dev traffic (no
+       tunnel-forwarding headers) passes freely once past gate 1; tunnel
+       traffic must carry the nala_token cookie."""
+    if request.method in auth.STATE_CHANGING_METHODS:
+        origin = request.headers.get("origin")
+        if not auth.is_allowed_origin(origin, request.headers.get("host")):
+            events.log_event(
+                "web", None, "rejected",
+                {"reason": "CSRF origin check failed", "origin": origin, "path": request.url.path, "method": request.method},
+                level="error",
+            )
+            return JSONResponse({"error": "forbidden — bad origin"}, status_code=403)
+
     if request.url.path == "/login" or not auth.is_tunnel_request(request.headers):
         return await call_next(request)
 

@@ -3,9 +3,11 @@ from fastapi.testclient import TestClient
 from nala import chokepoint, events
 from nala.serve import app
 
+ORIGIN_HEADERS = {"origin": "http://127.0.0.1:8642"}  # matches auth.FIXED_ALLOWED_ORIGINS — required on every state-changing request
+
 
 def test_events_endpoint_returns_events_since(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     events.log_event("s1", "t1", "utterance", {"text": "hi"})
     events.log_event("s1", "t1", "tool_call", {"action_type": "report_status"})
 
@@ -16,7 +18,7 @@ def test_events_endpoint_returns_events_since(data_dir):
 
 
 def test_actions_endpoint_lists_processed_actions(data_dir, fake_backlog):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     chokepoint.execute_action(
         "capture_task",
         {"title": "x", "project": "life_os", "priority": "low", "category": "chore"},
@@ -36,7 +38,7 @@ def test_status_endpoint_reports_repos_and_indoubt(monkeypatch, data_dir, tmp_pa
     root = tmp_path / "projects"
     root.mkdir()
     monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/api/status")
 
@@ -55,7 +57,7 @@ def test_status_endpoint_is_cached_across_calls(monkeypatch, data_dir, tmp_path)
     monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
     serve_module._status_cache["payload"] = None
     serve_module._status_cache["ts"] = 0.0
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     first = client.get("/api/status").json()
     calls = {"n": 0}
@@ -73,7 +75,7 @@ def test_status_endpoint_is_cached_across_calls(monkeypatch, data_dir, tmp_path)
 
 
 def test_confirm_endpoint_dispatches_awaiting_action(data_dir, fake_backlog):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     fake_backlog.tasks.append({
         "id": 5, "title": "old", "description": "", "project": "life_os",
         "priority": "low", "status": "backlog", "category": "chore",
@@ -90,7 +92,7 @@ def test_confirm_endpoint_dispatches_awaiting_action(data_dir, fake_backlog):
 
 
 def test_reject_endpoint_marks_action_rejected_no_dispatch(data_dir, fake_backlog):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     fake_backlog.tasks.append({
         "id": 6, "title": "old2", "description": "", "project": "life_os",
         "priority": "low", "status": "backlog", "category": "chore",
@@ -107,7 +109,7 @@ def test_reject_endpoint_marks_action_rejected_no_dispatch(data_dir, fake_backlo
 
 
 def test_confirm_wildcard_token_rejection_parity_with_cli(data_dir, fake_backlog):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     fake_backlog.tasks.append({
         "id": 7, "title": "old3", "description": "", "project": "life_os",
         "priority": "low", "status": "backlog", "category": "chore",
@@ -123,7 +125,7 @@ def test_confirm_wildcard_token_rejection_parity_with_cli(data_dir, fake_backlog
 
 
 def test_reject_wildcard_token_rejection_parity_with_cli(data_dir, fake_backlog):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     fake_backlog.tasks.append({
         "id": 8, "title": "old4", "description": "", "project": "life_os",
         "priority": "low", "status": "backlog", "category": "chore",
@@ -139,7 +141,7 @@ def test_reject_wildcard_token_rejection_parity_with_cli(data_dir, fake_backlog)
 
 
 def test_index_serves_html(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/")
 
@@ -148,7 +150,7 @@ def test_index_serves_html(data_dir):
 
 
 def test_static_assets_are_served(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     css = client.get("/static/style.css")
     js = client.get("/static/app.js")
@@ -160,7 +162,7 @@ def test_static_assets_are_served(data_dir):
 def test_spend_endpoint_reports_totals_and_breakdown(data_dir):
     from nala import spend as spend_module
     spend_module.record_spend(turn_id="t1", model="claude-sonnet-5", input_tokens=1000, output_tokens=1000)
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/api/spend")
 
@@ -174,7 +176,7 @@ def test_spend_endpoint_reports_totals_and_breakdown(data_dir):
 
 def test_health_endpoint_never_blocks_and_reports_watchers(monkeypatch, data_dir):
     monkeypatch.setenv("NALA_OLLAMA_URL", "http://127.0.0.1:1")  # unreachable — must not hang or raise
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/api/health")
 
@@ -187,7 +189,7 @@ def test_health_endpoint_never_blocks_and_reports_watchers(monkeypatch, data_dir
 
 def test_routing_endpoint_reflects_real_config(data_dir):
     from nala import routing
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/api/routing")
 
@@ -199,7 +201,7 @@ def test_routing_endpoint_reflects_real_config(data_dir):
 
 def test_purposes_endpoint_reflects_real_manifests(data_dir):
     import nala.serve as serve_module
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.get("/api/purposes")
 
@@ -219,7 +221,7 @@ def test_turn_endpoint_runs_process_turn_and_returns_events(data_dir, tmp_path, 
     root.mkdir()
     monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
     monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.00")  # ceiling already "reached" — no real API call
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post("/api/turn", json={"text": "hello"})
 
@@ -231,7 +233,7 @@ def test_turn_endpoint_runs_process_turn_and_returns_events(data_dir, tmp_path, 
 
 
 def test_turn_endpoint_requires_text(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post("/api/turn", json={"text": "  "})
 
@@ -239,7 +241,7 @@ def test_turn_endpoint_requires_text(data_dir):
 
 
 def test_turn_endpoint_malformed_json_body_is_400_not_500(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post("/api/turn", content=b"not json at all", headers={"Content-Type": "application/json"})
 
@@ -254,7 +256,7 @@ def test_status_cache_refresh_tags_events_with_actor_status_cache(monkeypatch, d
     monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
     serve_module._status_cache["payload"] = None
     serve_module._status_cache["ts"] = 0.0
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     client.get("/api/status")
 
@@ -272,7 +274,7 @@ def test_memory_endpoint_returns_graph_shape(data_dir):
     from nala import memory
     memory.upsert_node("person", "Priya", "people")
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.get("/api/memory")
 
     assert resp.status_code == 200
@@ -286,7 +288,7 @@ def test_memory_endpoint_filters_by_purpose_scope(data_dir):
     memory.upsert_node("person", "Priya", "people")
     memory.upsert_node("project", "life_os", "projects")
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.get("/api/memory?purpose_scope=people")
 
     assert resp.status_code == 200
@@ -295,7 +297,7 @@ def test_memory_endpoint_filters_by_purpose_scope(data_dir):
 
 
 def test_memory_endpoint_invalid_kind_is_400_not_500(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.get("/api/memory?kind=not_a_real_kind")
 
     assert resp.status_code == 400
@@ -312,7 +314,7 @@ def test_memory_writes_endpoint_lists_only_memory_write_actions(data_dir, fake_b
         turn_id="t2", session_id="s1",
     )
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.get("/api/memory/writes")
 
     assert resp.status_code == 200
@@ -328,7 +330,7 @@ def test_memory_undo_endpoint_deletes_the_node(data_dir):
     )
     node_id = result.data["node_id"]
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.post(f"/api/memory/undo/{node_id}")
 
     assert resp.status_code == 200
@@ -346,7 +348,7 @@ def test_dismiss_endpoint_marks_notified_action_dismissed(data_dir):
     rows = chokepoint.list_processed_actions()
     token = rows[0]["idempotency_key"][:8]
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.post(f"/api/actions/{token}/dismiss")
 
     assert resp.status_code == 200
@@ -377,7 +379,7 @@ def test_voice_warmup_endpoint_calls_voice_warmup(monkeypatch, data_dir):
     calls = []
     monkeypatch.setattr(serve_module.voice, "warmup", lambda: calls.append(True))
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.get("/api/voice/warmup")
 
     assert resp.status_code == 200
@@ -398,7 +400,7 @@ def test_voice_turn_happy_path(monkeypatch, data_dir, tmp_path):
     monkeypatch.setattr(serve_module.voice, "synthesize", lambda text, **kw: b"FAKEREPLYWAV")
     monkeypatch.setattr(serve_module, "Brain", _FakeVoiceBrain)
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.post("/api/voice/turn", files={"audio": ("a.wav", _make_wav_bytes(), "audio/wav")})
 
     assert resp.status_code == 200
@@ -421,7 +423,7 @@ def test_voice_turn_ask_repeat_path_never_runs_process_turn(monkeypatch, data_di
     called = []
     monkeypatch.setattr(serve_module, "_run_turn_sync", lambda *a, **kw: called.append(True))
 
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     resp = client.post("/api/voice/turn", files={"audio": ("a.wav", _make_wav_bytes(), "audio/wav")})
 
     assert resp.status_code == 200
@@ -431,7 +433,7 @@ def test_voice_turn_ask_repeat_path_never_runs_process_turn(monkeypatch, data_di
 
 
 def test_voice_turn_missing_audio_is_400(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post("/api/voice/turn", data={})
 
@@ -439,7 +441,7 @@ def test_voice_turn_missing_audio_is_400(data_dir):
 
 
 def test_voice_turn_malformed_audio_is_400(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post("/api/voice/turn", files={"audio": ("a.wav", b"not a real wav file", "audio/wav")})
 
@@ -448,7 +450,7 @@ def test_voice_turn_malformed_audio_is_400(data_dir):
 
 def test_voice_turn_oversized_bytes_is_413(data_dir):
     import nala.serve as serve_module
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post(
         "/api/voice/turn",
@@ -459,7 +461,7 @@ def test_voice_turn_oversized_bytes_is_413(data_dir):
 
 
 def test_voice_turn_oversized_duration_is_413(data_dir):
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
     long_wav = _make_wav_bytes(duration_ms=20_000, rate=8000)  # well under the byte limit, over the duration limit
 
     resp = client.post("/api/voice/turn", files={"audio": ("a.wav", long_wav, "audio/wav")})
@@ -469,7 +471,7 @@ def test_voice_turn_oversized_duration_is_413(data_dir):
 
 def test_voice_turn_requires_auth_over_tunnel(monkeypatch, data_dir):
     monkeypatch.setenv("NALA_ACCESS_TOKEN", "correct-token")
-    client = TestClient(app)
+    client = TestClient(app, headers=ORIGIN_HEADERS)
 
     resp = client.post(
         "/api/voice/turn",

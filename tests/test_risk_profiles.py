@@ -102,6 +102,34 @@ def test_direct_user_turn_purpose_none_dispatches_reversible_immediately(data_di
     assert result.status == "done"  # no purpose given — ordinary reversible-action behavior, unaffected by risk profiles
 
 
+# ---------------------------------------------------------------- malformed manifest resilience
+
+def test_malformed_manifest_during_dispatch_is_rejected_loudly_not_raised(data_dir, monkeypatch):
+    from nala import chokepoint as chokepoint_module
+    from nala import purposes
+
+    def boom(purpose, purposes_dir=None):
+        raise purposes.PurposeManifestError("manifest mid-edit — invalid YAML")
+
+    monkeypatch.setattr(chokepoint_module.purposes, "risk_profile_for", boom)
+
+    result = chokepoint.execute_action(
+        "memory_write", _memory_write_args(), turn_id="t18", session_id="s1", purpose="projects",
+    )
+
+    assert result.status == "rejected"
+    assert "risk profile" in result.message.lower()
+
+    conn = db.connect()
+    rows = conn.execute("SELECT * FROM events WHERE level = 'error'").fetchall()
+    conn.close()
+    assert any("purpose risk-profile lookup" in r["payload_json"] for r in rows)
+
+    # No side effect and no ledger row — the failure happened before dispatch.
+    from nala import memory
+    assert memory.query(label="Priya")["nodes"] == []
+
+
 # ---------------------------------------------------------------- dismiss lifecycle
 
 def test_dismiss_notified_action_marks_dismissed(data_dir):

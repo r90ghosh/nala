@@ -279,3 +279,49 @@ def test_remember_missing_memory_write_fields_is_rejected_loudly(data_dir, fake_
     rows = conn.execute("SELECT * FROM events WHERE type = 'rejected' AND level = 'error'").fetchall()
     conn.close()
     assert any("memory_write" in r["payload_json"] for r in rows)
+
+
+def test_dispatch_exception_is_contained_watermark_still_advances_and_siblings_still_process(
+    data_dir, fake_backlog, fake_ollama, monkeypatch,
+):
+    # A malformed manifest is now caught inside execute_action itself (see
+    # test_risk_profiles.py), but this covers the second, defense-in-depth
+    # layer in triage.py's own loop: ANY unexpected exception from a
+    # dispatch must never abort the batch or lose watermark progress on a
+    # later, unrelated signal.
+    _make_signal_event(ref="sig1")
+    id2 = _make_signal_event(ref="sig2")
+    fake_ollama.responses.append(json.dumps({
+        "classification": "propose", "purpose": "projects", "reason": "r1",
+        "capture_task": {"title": "t1", "project": "life_os", "priority": "low", "category": "chore"},
+    }))
+    fake_ollama.responses.append(json.dumps({
+        "classification": "propose", "purpose": "projects", "reason": "r2",
+        "capture_task": {"title": "t2", "project": "life_os", "priority": "low", "category": "chore"},
+    }))
+
+    real_execute_action = triage.chokepoint.execute_action
+    calls = {"n": 0}
+
+    def flaky_execute_action(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated dispatch crash")
+        return real_execute_action(*args, **kwargs)
+
+    monkeypatch.setattr(triage.chokepoint, "execute_action", flaky_execute_action)
+
+    counts = triage.run_triage_pass()
+
+    assert counts["triaged"] == 2  # both signals were classified regardless of the first one's dispatch crashing
+    assert state.get_cursor("triage")["last_event_id"] == id2  # watermark advanced past BOTH — sig1 never stuck retrying forever
+
+    conn = db.connect()
+    error_rows = conn.execute("SELECT * FROM events WHERE type = 'rejected' AND level = 'error'").fetchall()
+    conn.close()
+    assert any("dispatch raised unexpectedly" in r["payload_json"] for r in error_rows)
+
+    # The second (sibling) signal's dispatch went through fine, unaffected
+    # by the first one's crash — proves the batch kept processing.
+    rows = chokepoint.list_processed_actions()
+    assert any(r["action_type"] == "capture_task" and r["status"] == "awaiting_confirm" for r in rows)

@@ -256,13 +256,28 @@ def run_triage_pass(data_dir: Path | None = None) -> dict:
         )
         counts["triaged"] += 1
 
-        if result["classification"] == "propose":
-            _dispatch_propose(row, result, purpose, turn_id, data_dir, counts)
-        elif result["classification"] == "remember":
-            _dispatch_remember(row, result, purpose, turn_id, data_dir, counts)
+        # execute_action itself now contains its own failures (including a
+        # malformed-manifest risk-profile lookup), but this try/except is a
+        # deliberate second layer: nothing about a single signal's dispatch
+        # should ever be able to abort the whole batch mid-loop and lose
+        # watermark progress on every later signal too — same "defense in
+        # depth, not the primary path" reasoning as nala.scheduler's per-
+        # iteration try/except around each watcher.
+        try:
+            if result["classification"] == "propose":
+                _dispatch_propose(row, result, purpose, turn_id, data_dir, counts)
+            elif result["classification"] == "remember":
+                _dispatch_remember(row, result, purpose, turn_id, data_dir, counts)
+        except Exception as exc:
+            events.log_event(
+                SESSION_ID, turn_id, "rejected",
+                {"signal_event_id": row["id"], "reason": f"dispatch raised unexpectedly: {exc}"},
+                level="error", data_dir=data_dir,
+            )
 
-        # Terminal outcome reached for this signal — commit the watermark
-        # past it now (see comment above; same reasoning applies here).
+        # Terminal outcome reached for this signal (dispatched, rejected, or
+        # errored above) — commit the watermark past it now (see comment
+        # above; same reasoning applies here).
         state.set_cursor(WATERMARK_NAME, {"last_event_id": row["id"]}, data_dir)
 
     return counts

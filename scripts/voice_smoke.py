@@ -47,6 +47,11 @@ def main() -> int:
             resp = httpx.post(
                 f"{args.url}/api/voice/turn",
                 files={"audio": ("smoke.wav", f, "audio/wav")},
+                # serve.py's CSRF gate requires Origin on every state-changing
+                # request now — --url IS an origin (scheme://host[:port]), so
+                # this satisfies both the local-dev allow-list and the
+                # tunnel's dynamic Host-derived rule.
+                headers={"Origin": args.url},
                 timeout=60.0,
             )
         elapsed_ms = int((time.monotonic() - start) * 1000)

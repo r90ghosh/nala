@@ -66,6 +66,37 @@ the action path. Repo: https://github.com/r90ghosh/nala
     `nala/voice.py`'s import time was sufficient in direct testing (synthesis succeeded from
     a different cwd with `VIRTUAL_ENV` unset too) — no cwd requirement or subprocess
     isolation was needed beyond the MLX thread-pinning fix above.
+- **Security fix wave complete (2026-07-22), between M6 and M7:** a review of M4.5+M5 found a
+  CRITICAL — the "no tunnel headers → local traffic → skip auth entirely" path had no CSRF
+  defense, confirmed live: a cross-origin POST to `/api/turn` and `/api/memory/undo/*` with a
+  spoofed Origin, no cookie, and no tunnel headers both returned 200. Any website the user's
+  browser visits while `serve` is running could blind-POST to `127.0.0.1:8642` and dispatch
+  real actions (a `memory_write` with `source="user_said"` is a persistent prompt-injection
+  into every future chat's system prompt; `capture_task` is a real backlog write) with zero
+  auth. **Fixed** with a CSRF Origin allow-list (`auth.is_allowed_origin`) enforced on every
+  state-changing request (POST/PUT/PATCH/DELETE) independently of tunnel-vs-local
+  classification — allow-list is the two fixed local-dev origins plus an https origin matching
+  the request's own Host header (so the tunnel's hostname passes without hardcoding it); a
+  missing Origin is also refused, since browsers always send one on a mutating request. Verified
+  live against the running server: the exact spoofed-origin and no-origin exploits now both 403;
+  legitimate local-origin traffic still dispatches real turns end to end. Also fixed in the same
+  wave: `execute_action`'s purpose risk-profile lookup is now wrapped like every sibling
+  precondition (a malformed manifest mid-dispatch is a controlled `rejected` result, not an
+  uncaught exception that used to abort a whole `triage` batch and lose watermark progress on
+  every later signal); `memory.upsert_node`'s SELECT-then-INSERT/UPDATE TOCTOU race is now an
+  atomic INSERT-OR-IGNORE against a new `UNIQUE(kind, label, purpose_scope)` index (retrofit
+  onto the existing `~/.nala/memory.db` via a dedupe-then-index step in `ensure_schema`, since
+  SQLite can't `ALTER TABLE` a constraint onto an existing table). 199 tests green (9 new),
+  lint + ruff clean. Not pushed — team lead verifies before push.
+  - **Known follow-ups (flagged, not fixed — not blockers):** (1) `tools_allowed` in purpose
+    manifests is validated at load but never enforced anywhere — decorative today, since the
+    blanket `risk_profile` gate happens to cover the same ground. (2) `POST
+    /api/memory/undo/{node_id}` is a hard cascading `delete_node`, not a real undo (it can't be
+    undone itself) — worth a tombstone/soft-delete design, or at minimum tagging `delete_node`
+    irreversible (confirm-gated) in a later pass. (3) The Memory tab's force-directed graph
+    layout is O(n²) × 220 sync iterations on the main thread — will visibly jank once the graph
+    reaches a few hundred nodes; fine at the current scale (single digits), revisit before it
+    isn't.
 - **Next (Session 5 / M7):** iOS app (Expo) — push, location, health, voice over the
   `com.nala.tunnel` cloudflared tunnel. Same core, a second client.
 
@@ -148,6 +179,22 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
   the primary defense.
 - Voice tests never load the real STT/TTS models — `voice._get_stt_model`/`_get_tts_model`/
   `generate_audio` are monkeypatched with fakes throughout `tests/test_voice.py`.
+- **Every state-changing request (POST/PUT/PATCH/DELETE) needs an `Origin` header matching
+  `auth.is_allowed_origin`** — enforced in `serve.py`'s `access_token_gate` middleware,
+  independently of and before the tunnel-cookie check. `TestClient(app)` needs
+  `headers={"origin": "http://127.0.0.1:8642"}` (or the dynamic `https://{host}` form for an
+  `https://` `base_url`) for any test that POSTs — see `tests/test_serve.py`'s
+  `ORIGIN_HEADERS` constant. Non-browser clients (`scripts/voice_smoke.py`) must set it too.
+  Adding a new mutating route doesn't need any extra wiring — the middleware covers all of
+  them by HTTP method, not a route allowlist.
+- `nala/memory.py`'s `ensure_schema` now also dedupes any pre-existing duplicate nodes and
+  creates a `UNIQUE(kind, label, purpose_scope)` index, every time it runs (which is every
+  `connect()` call). This is cheap once the index already exists (`IF NOT EXISTS` short-
+  circuits), but racing many threads through a **brand-new, not-yet-initialized** db file can
+  contend past even the 5s `busy_timeout` — not a real production scenario (the db is
+  initialized once, long before concurrent access matters) but worth knowing if a test seems
+  flakily slow: pre-warm with a throwaway `connect()` before spawning concurrent workers, as
+  `test_upsert_node_concurrent_calls_produce_exactly_one_node` does.
 
 ## Session checklist
 
