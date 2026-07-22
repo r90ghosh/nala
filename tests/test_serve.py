@@ -249,3 +249,88 @@ def test_status_cache_refresh_tags_events_with_actor_status_cache(monkeypatch, d
     import json
     payload = json.loads(rows[0]["payload_json"])
     assert payload["actor"] == "status-cache"
+
+
+def test_memory_endpoint_returns_graph_shape(data_dir):
+    from nala import memory
+    memory.upsert_node("person", "Priya", "people")
+
+    client = TestClient(app)
+    resp = client.get("/api/memory")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["nodes"]) == 1
+    assert data["nodes"][0]["label"] == "Priya"
+
+
+def test_memory_endpoint_filters_by_purpose_scope(data_dir):
+    from nala import memory
+    memory.upsert_node("person", "Priya", "people")
+    memory.upsert_node("project", "life_os", "projects")
+
+    client = TestClient(app)
+    resp = client.get("/api/memory?purpose_scope=people")
+
+    assert resp.status_code == 200
+    labels = {n["label"] for n in resp.json()["nodes"]}
+    assert labels == {"Priya"}
+
+
+def test_memory_endpoint_invalid_kind_is_400_not_500(data_dir):
+    client = TestClient(app)
+    resp = client.get("/api/memory?kind=not_a_real_kind")
+
+    assert resp.status_code == 400
+    assert "error" in resp.json()
+
+
+def test_memory_writes_endpoint_lists_only_memory_write_actions(data_dir, fake_backlog):
+    chokepoint.execute_action(
+        "capture_task", {"title": "x", "project": "life_os", "priority": "low", "category": "chore"},
+        turn_id="t1", session_id="s1",
+    )
+    chokepoint.execute_action(
+        "memory_write", {"op": "upsert_node", "kind": "person", "label": "Priya", "purpose_scope": "people"},
+        turn_id="t2", session_id="s1",
+    )
+
+    client = TestClient(app)
+    resp = client.get("/api/memory/writes")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["action_type"] == "memory_write"
+
+
+def test_memory_undo_endpoint_deletes_the_node(data_dir):
+    result = chokepoint.execute_action(
+        "memory_write", {"op": "upsert_node", "kind": "person", "label": "Priya", "purpose_scope": "people"},
+        turn_id="t1", session_id="s1",
+    )
+    node_id = result.data["node_id"]
+
+    client = TestClient(app)
+    resp = client.post(f"/api/memory/undo/{node_id}")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "done"
+
+    from nala import memory
+    assert memory.query(label="Priya")["nodes"] == []
+
+
+def test_dismiss_endpoint_marks_notified_action_dismissed(data_dir):
+    chokepoint.execute_action(
+        "memory_write", {"op": "upsert_node", "kind": "person", "label": "Priya", "purpose_scope": "people"},
+        turn_id="t1", session_id="s1", purpose="relationships",
+    )
+    rows = chokepoint.list_processed_actions()
+    token = rows[0]["idempotency_key"][:8]
+
+    client = TestClient(app)
+    resp = client.post(f"/api/actions/{token}/dismiss")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "dismissed"

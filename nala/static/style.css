@@ -155,16 +155,28 @@ button{font-family:inherit;}
 .chat-empty{text-align:center;color:var(--faint);font-size:12px;padding:40px 10px;font-family:'JetBrains Mono',monospace;}
 
 /* ---------- memory mode ---------- */
-.memory-placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--faint);}
-.ghost-graph{width:220px;height:160px;position:relative;opacity:.5;}
-.ghost-graph .g-node{position:absolute;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--violet);background:rgba(167,139,250,.08);}
-.ghost-graph .g-node.n1{top:70px;left:100px;width:22px;height:22px;}
-.ghost-graph .g-node.n2{top:10px;left:20px;}
-.ghost-graph .g-node.n3{top:20px;left:180px;}
-.ghost-graph .g-node.n4{top:120px;left:10px;}
-.ghost-graph .g-node.n5{top:130px;left:190px;}
-.ghost-graph .g-edge{position:absolute;background:var(--hair);height:1px;transform-origin:0 0;}
-.memory-msg{font-size:13px;font-family:'JetBrains Mono',monospace;}
+.memory-layout{flex:1;min-height:0;display:grid;grid-template-columns:1fr 320px;gap:12px;padding:12px;overflow:hidden;}
+.memory-graph-col{display:flex;flex-direction:column;min-height:0;}
+.memory-side-col{overflow-y:auto;}
+.memory-controls input{padding:6px 10px;border-radius:7px;border:1px solid var(--hair);background:var(--panel2);color:var(--ink);font-family:inherit;font-size:11.5px;min-width:170px;}
+.memory-controls input:focus{outline:none;border-color:var(--accent);}
+.memory-pills{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--hair);}
+.mem-pill{font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 9px;border-radius:999px;border:1px solid var(--hair);background:var(--panel2);color:var(--faint);cursor:pointer;}
+.mem-pill.active{background:rgba(56,189,248,.15);border-color:rgba(56,189,248,.4);color:var(--accent);}
+.memory-graph-body{position:relative;flex:1;min-height:0;padding:0;}
+.memory-graph-svg{width:100%;height:100%;display:block;}
+.mg-node{cursor:pointer;}
+.mg-node-label{fill:#c7d0dd;font-size:9.5px;font-family:'JetBrains Mono',monospace;pointer-events:none;}
+.mg-edge-label{fill:var(--faint);font-size:8.5px;font-family:'JetBrains Mono',monospace;pointer-events:none;}
+.memory-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px 30px;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.6;}
+.memory-empty code{background:rgba(255,255,255,.05);padding:2px 6px;border-radius:5px;}
+
+.mem-node-head{display:flex;align-items:center;gap:8px;}
+.mem-node-label{font-size:13px;font-weight:600;color:#fff;flex:1;}
+.mem-node-scope{margin:4px 0 10px;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);}
+.mem-obs{border:1px solid var(--hair);border-radius:8px;background:var(--panel2);padding:7px 9px;margin-bottom:6px;}
+.mem-obs-fact{font-size:11.5px;color:#dbe3ee;line-height:1.4;}
+.prov-chip{display:inline-block;margin-top:5px;font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:5px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.28);color:#c9bdf7;}
 
 /* ---------- mobile sub-tabs (monitor mode) + bottom tab bar ---------- */
 .mobile-tabbar{display:none;}
@@ -212,8 +224,14 @@ button{font-family:inherit;}
     display:flex;position:fixed;bottom:0;left:0;right:0;z-index:60;
     background:#0b0f16;border-top:1px solid var(--hair);padding:6px 8px calc(6px + env(safe-area-inset-bottom));
   }
-  .mtab{flex:1;padding:8px;border:none;background:transparent;color:var(--faint);font-size:11px;font-weight:600;min-height:44px;}
+  .mtab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;border:none;background:transparent;color:var(--faint);font-size:9.5px;font-weight:600;min-height:44px;}
+  .mtab-icon{font-size:16px;line-height:1;}
   .mtab.active{color:var(--accent);}
+
+  .memory-layout{grid-template-columns:1fr;padding:8px;padding-bottom:64px;}
+  .memory-side-col{max-height:42vh;}
+  .memory-controls input{min-height:40px;flex:1;}
+  .mem-pill{padding:8px 10px;min-height:36px;}
 
   .view.active{padding-bottom:0;}
 }

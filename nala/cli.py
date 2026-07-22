@@ -11,6 +11,44 @@ from nala.briefing import compose_briefing
 from nala.errors import loud_failure
 from nala.spend import SpendCeilingExceeded
 
+MEMORY_CONTEXT_TOP_K = 8
+
+
+def _memory_context_for_turn(utterance: str, turn_id: str, session_id: str) -> str | None:
+    """Pulls a small, relevant slice of the memory graph before the brain
+    call so chat can reference what it already knows without the user
+    re-stating it — no embeddings in M5, just "mentioned in the utterance"
+    first, then filled out by recency. Goes through the same memory_recall
+    dispatch (and the same feed logging) as any other tool call. Returns
+    None if memory is empty, unreachable, or nothing is worth surfacing —
+    never blocks or degrades the turn itself."""
+    result = chokepoint.execute_action("memory_recall", {}, turn_id=turn_id, session_id=session_id)
+    if result.status != "done":
+        return None
+
+    nodes = result.data.get("nodes", [])
+    if not nodes:
+        return None
+
+    lowered = utterance.lower()
+    mentioned = [n for n in nodes if n["label"].lower() in lowered]
+    mentioned_ids = {n["node_id"] for n in mentioned}
+    recent = [n for n in nodes if n["node_id"] not in mentioned_ids]  # already recency-ordered by memory.query
+    top = (mentioned + recent)[:MEMORY_CONTEXT_TOP_K]
+    if not top:
+        return None
+
+    obs_by_node: dict[str, list[dict]] = {}
+    for obs in result.data.get("observations", []):
+        obs_by_node.setdefault(obs["node_id"], []).append(obs)
+
+    lines = ["Known context from the personal memory graph (use it if relevant, otherwise ignore it):"]
+    for n in top:
+        facts = obs_by_node.get(n["node_id"], [])[:3]
+        fact_str = "; ".join(f"{o['fact']} (source: {o['source']})" for o in facts) if facts else "(no observations recorded)"
+        lines.append(f"- {n['label']} [{n['kind']}, {n['purpose_scope']}]: {fact_str}")
+    return "\n".join(lines)
+
 
 def process_turn(utterance: str, *, brain: Brain, session_id: str, turn_id: str | None = None) -> chokepoint.ActionResult:
     turn_id = turn_id or events.new_id()
@@ -21,8 +59,10 @@ def process_turn(utterance: str, *, brain: Brain, session_id: str, turn_id: str 
         token = stripped.split(None, 1)[1].strip()
         return chokepoint.confirm_action(token, turn_id=turn_id, session_id=session_id)
 
+    memory_context = _memory_context_for_turn(utterance, turn_id, session_id)
+
     try:
-        intent = brain.decide(utterance, turn_id=turn_id, session_id=session_id)
+        intent = brain.decide(utterance, turn_id=turn_id, session_id=session_id, memory_context=memory_context)
     except BrainError as exc:
         events.log_event(session_id, turn_id, "rejected", {"reason": str(exc)}, level="error")
         return chokepoint.ActionResult(status="rejected", message=f"couldn't understand that: {exc}")

@@ -54,6 +54,66 @@ TOOLS_SCHEMA = [
         "description": "Report git status (branch, dirty, ahead/behind) across all tracked project repos.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "memory_write",
+        "description": (
+            "Record or update something in the personal memory graph. Use op='upsert_node' to "
+            "create/update an entity (person/project/preference/event/thing/place); op='add_edge' "
+            "to relate two existing entities by node_id; op='add_observation' to record a fact "
+            "against a node (pass node_id if it already exists, or kind+label+purpose_scope to "
+            "create it in the same call); op='delete_node' to remove an entity entirely. When the "
+            "user directly tells you something ('remember that...'), always set source='user_said' "
+            "and source_ref to a short quote of what they said — provenance is required, never omit it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "op": {
+                    "type": "string",
+                    "enum": ["upsert_node", "add_edge", "add_observation", "delete_node"],
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["person", "project", "preference", "event", "thing", "place"],
+                },
+                "label": {"type": "string", "description": "the entity's name/label"},
+                "purpose_scope": {
+                    "type": "string",
+                    "description": "which purpose this belongs to, or 'people' for persons",
+                    "enum": ["projects", "finance", "baby", "relationships", "home", "news", "interests", "purchase", "people"],
+                },
+                "src_node": {"type": "string", "description": "node_id for add_edge"},
+                "rel": {"type": "string", "description": "relationship label for add_edge"},
+                "dst_node": {"type": "string", "description": "node_id for add_edge"},
+                "node_id": {"type": "string", "description": "existing node_id, for add_observation or delete_node"},
+                "fact": {"type": "string", "description": "the fact being recorded, for add_observation"},
+                "source": {
+                    "type": "string",
+                    "enum": ["user_said", "gmail", "imessage", "calendar", "triage", "manual"],
+                },
+                "source_ref": {"type": "string", "description": "a short reference for where this fact came from"},
+            },
+            "required": ["op"],
+        },
+    },
+    {
+        "name": "memory_recall",
+        "description": "Search the personal memory graph for nodes matching a label, kind, and/or purpose_scope.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "enum": ["person", "project", "preference", "event", "thing", "place"],
+                },
+                "purpose_scope": {
+                    "type": "string",
+                    "enum": ["projects", "finance", "baby", "relationships", "home", "news", "interests", "purchase", "people"],
+                },
+            },
+        },
+    },
 ]
 
 
@@ -78,10 +138,18 @@ class Brain:
         )
         self.model = model
 
-    def decide(self, utterance: str, *, turn_id: str, session_id: str) -> RawIntent:
+    def decide(self, utterance: str, *, turn_id: str, session_id: str, memory_context: str | None = None) -> RawIntent:
+        """memory_context: a short slice of the memory graph (nala.cli's
+        _memory_context_for_turn), passed as the system prompt so the model
+        can reference what it already knows without the caller having to
+        splice it into the user turn itself. None when there's nothing
+        relevant (or memory is unreachable) — omitted entirely, not sent as
+        an empty system prompt."""
         check_ceiling()  # refuse before dispatch, not after paying for the call
 
         events.log_event(session_id, turn_id, "llm_request", {"utterance": utterance, "model": self.model})
+
+        extra: dict = {"system": memory_context} if memory_context else {}
 
         try:
             response = self.client.messages.create(
@@ -89,6 +157,7 @@ class Brain:
                 max_tokens=1024,
                 tools=TOOLS_SCHEMA,
                 messages=[{"role": "user", "content": utterance}],
+                **extra,
             )
         except anthropic.APIError as exc:
             raise BrainError(f"brain unreachable: {exc}") from exc

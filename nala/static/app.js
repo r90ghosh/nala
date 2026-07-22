@@ -45,16 +45,17 @@ const monitorSubtabs = document.querySelectorAll('.monitor-subtabs button');
 function setMode(mode) {
   modeTabs.forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   Object.entries(views).forEach(([k, el]) => el.classList.toggle('active', k === mode));
-  if (mode === 'chat') {
-    mobileTabs.forEach(b => b.classList.toggle('active', b.dataset.mobile === 'chat'));
+  if (mode === 'chat' || mode === 'memory') {
+    mobileTabs.forEach(b => b.classList.toggle('active', b.dataset.mobile === mode));
   }
+  if (mode === 'memory') loadMemory();
 }
 modeTabs.forEach(t => t.addEventListener('click', () => setMode(t.dataset.mode)));
 
 function setMobileTab(tab) {
   mobileTabs.forEach(b => b.classList.toggle('active', b.dataset.mobile === tab));
-  if (tab === 'chat') {
-    setMode('chat');
+  if (tab === 'chat' || tab === 'memory') {
+    setMode(tab);
     return;
   }
   setMode('monitor');
@@ -474,6 +475,241 @@ async function sendChatMessage() {
 chatSendEl.addEventListener('click', sendChatMessage);
 chatInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
 
+// ---------------------------------------------------------------- memory graph
+const KIND_COLORS = {
+  person: '#f472b6', project: '#38bdf8', preference: '#a78bfa',
+  event: '#fbbf24', thing: '#34d399', place: '#22d3ee',
+};
+const MEMORY_PURPOSES = ['people', 'projects', 'finance', 'baby', 'relationships', 'home', 'news', 'interests', 'purchase'];
+
+let memoryData = { nodes: [], edges: [], observations: [] };
+let memoryActivePurpose = null; // null = all
+let memorySelectedNodeId = null;
+
+const memorySearchEl = document.getElementById('memorySearch');
+const memoryGraphSvgEl = document.getElementById('memoryGraphSvg');
+const memoryEmptyEl = document.getElementById('memoryEmpty');
+const memoryNodeBodyEl = document.getElementById('memoryNodeBody');
+const memoryRecentBodyEl = document.getElementById('memoryRecentBody');
+
+// Hand-rolled force layout — no build step, no external libs, and this is a
+// personal graph (dozens of nodes, not thousands), so a few hundred
+// synchronous iterations of repulsion + spring-per-edge is plenty.
+function layoutGraph(nodes, edges, width, height) {
+  const positioned = nodes.map((n, i) => {
+    const angle = (i / Math.max(nodes.length, 1)) * Math.PI * 2;
+    const radius = Math.min(width, height) * 0.32;
+    return {
+      ...n,
+      x: width / 2 + Math.cos(angle) * radius + (Math.random() - 0.5) * 12,
+      y: height / 2 + Math.sin(angle) * radius + (Math.random() - 0.5) * 12,
+      vx: 0, vy: 0,
+    };
+  });
+  const byId = new Map(positioned.map(n => [n.node_id, n]));
+  const REPULSION = 2200, SPRING_LENGTH = 110, SPRING_STRENGTH = 0.02, CENTER_PULL = 0.01, DAMPING = 0.85;
+
+  for (let iter = 0; iter < 220; iter++) {
+    for (let i = 0; i < positioned.length; i++) {
+      for (let j = i + 1; j < positioned.length; j++) {
+        const a = positioned[i], b = positioned[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const distSq = Math.max(dx * dx + dy * dy, 0.01);
+        const dist = Math.sqrt(distSq);
+        const force = REPULSION / distSq;
+        const fx = (dx / dist) * force, fy = (dy / dist) * force;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
+      }
+    }
+    for (const e of edges) {
+      const a = byId.get(e.src_node), b = byId.get(e.dst_node);
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
+      const diff = dist - SPRING_LENGTH;
+      const fx = (dx / dist) * diff * SPRING_STRENGTH, fy = (dy / dist) * diff * SPRING_STRENGTH;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    }
+    for (const n of positioned) {
+      n.vx += (width / 2 - n.x) * CENTER_PULL;
+      n.vy += (height / 2 - n.y) * CENTER_PULL;
+      n.x += n.vx * 0.15;
+      n.y += n.vy * 0.15;
+      n.vx *= DAMPING; n.vy *= DAMPING;
+      n.x = Math.max(30, Math.min(width - 30, n.x));
+      n.y = Math.max(30, Math.min(height - 30, n.y));
+    }
+  }
+  return positioned;
+}
+
+function renderMemoryGraph() {
+  const nodes = memoryData.nodes || [];
+  const edges = memoryData.edges || [];
+
+  if (!nodes.length) {
+    memoryGraphSvgEl.innerHTML = '';
+    memoryEmptyEl.style.display = 'flex';
+    return;
+  }
+  memoryEmptyEl.style.display = 'none';
+
+  const rect = memoryGraphSvgEl.getBoundingClientRect();
+  const width = rect.width || 600, height = rect.height || 400;
+  memoryGraphSvgEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const positioned = layoutGraph(nodes, edges, width, height);
+  const byId = new Map(positioned.map(n => [n.node_id, n]));
+
+  let svg = '';
+  for (const e of edges) {
+    const a = byId.get(e.src_node), b = byId.get(e.dst_node);
+    if (!a || !b) continue;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    svg += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#1e2430" stroke-width="1.5" />`;
+    svg += `<text x="${mx}" y="${my}" class="mg-edge-label" text-anchor="middle">${esc(e.rel)}</text>`;
+  }
+  for (const n of positioned) {
+    const color = KIND_COLORS[n.kind] || '#8a97a8';
+    const selected = n.node_id === memorySelectedNodeId;
+    svg += `<g class="mg-node" data-node-id="${esc(n.node_id)}" transform="translate(${n.x},${n.y})">
+      <circle r="${selected ? 16 : 13}" fill="${color}22" stroke="${color}" stroke-width="${selected ? 2.5 : 1.5}" />
+      <text class="mg-node-label" text-anchor="middle" dy="26">${esc(n.label)}</text>
+    </g>`;
+  }
+  memoryGraphSvgEl.innerHTML = svg;
+  memoryGraphSvgEl.querySelectorAll('.mg-node').forEach(g => {
+    g.addEventListener('click', () => selectMemoryNode(g.dataset.nodeId));
+  });
+}
+
+function formatProvenanceChip(o) {
+  const d = new Date(o.observed_at);
+  const label = o.source === 'user_said' ? 'you said' : o.source;
+  const dateStr = isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()}`;
+  return dateStr ? `${label} ${dateStr}` : label;
+}
+
+function selectMemoryNode(nodeId) {
+  memorySelectedNodeId = nodeId;
+  const node = (memoryData.nodes || []).find(n => n.node_id === nodeId);
+  if (!node) return;
+
+  const obs = (memoryData.observations || []).filter(o => o.node_id === nodeId);
+  const factsHtml = obs.length
+    ? obs.map(o => `<div class="mem-obs">
+        <div class="mem-obs-fact">${esc(o.fact)}</div>
+        <span class="prov-chip">${esc(formatProvenanceChip(o))}</span>
+      </div>`).join('')
+    : '<div class="queue-empty">no observations recorded yet</div>';
+
+  memoryNodeBodyEl.innerHTML = `
+    <div class="mem-node-head">
+      <span class="dot" style="background:${KIND_COLORS[node.kind] || '#8a97a8'}"></span>
+      <span class="mem-node-label">${esc(node.label)}</span>
+      <span class="badge badge-slate">${esc(node.kind)}</span>
+    </div>
+    <div class="mem-node-scope">scope: ${esc(node.purpose_scope)}</div>
+    ${factsHtml}
+    <button class="btn btn-reject" style="margin-top:10px;width:100%;" onclick="undoMemoryNode('${esc(node.node_id)}')">Delete this node</button>
+  `;
+  renderMemoryGraph(); // re-render so the selected node's ring updates
+}
+
+function renderMemoryPurposePills() {
+  const el = document.getElementById('memoryPurposePills');
+  const pills = [{ value: '', label: 'all' }, ...MEMORY_PURPOSES.map(p => ({ value: p, label: p }))];
+  el.innerHTML = pills.map(p => `<button class="mem-pill ${(!p.value && !memoryActivePurpose) || p.value === memoryActivePurpose ? 'active' : ''}" data-purpose="${esc(p.value)}">${esc(p.label)}</button>`).join('');
+  el.querySelectorAll('.mem-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      memoryActivePurpose = btn.dataset.purpose || null;
+      renderMemoryPurposePills();
+      loadMemory();
+    });
+  });
+}
+
+let memorySearchTimer = null;
+memorySearchEl.addEventListener('input', () => {
+  clearTimeout(memorySearchTimer);
+  memorySearchTimer = setTimeout(loadMemory, 250);
+});
+
+async function loadMemory() {
+  const params = new URLSearchParams();
+  const label = memorySearchEl.value.trim();
+  if (label) params.set('label', label);
+  if (memoryActivePurpose) params.set('purpose_scope', memoryActivePurpose);
+
+  try {
+    const resp = await fetch(`/api/memory?${params.toString()}`);
+    const data = await resp.json();
+    memoryData = data.nodes ? data : { nodes: [], edges: [], observations: [] };
+    renderMemoryGraph();
+  } catch (e) {
+    memoryData = { nodes: [], edges: [], observations: [] };
+    memoryEmptyEl.textContent = 'memory graph unreachable';
+    memoryEmptyEl.style.display = 'flex';
+  }
+}
+
+function memoryWriteOp(row) {
+  try { return JSON.parse(row.args_json).op; } catch (e) { return null; }
+}
+
+function formatMemoryWriteSummary(row) {
+  let args = {}, result = {};
+  try { args = JSON.parse(row.args_json); } catch (e) { /* leave empty */ }
+  try { result = row.result_json ? JSON.parse(row.result_json) : {}; } catch (e) { /* leave empty */ }
+  const op = args.op || '?';
+  if (op === 'delete_node') return `deleted node ${result.label || args.node_id || ''}`;
+  if (op === 'upsert_node') return `${result.created ? 'created' : 'updated'} ${args.kind || ''}: ${args.label || ''}`;
+  if (op === 'add_observation') return `observed on ${args.label || result.node_id || ''}: ${args.fact || ''}`;
+  if (op === 'add_edge') return `linked ${args.src_node || ''} —${args.rel || ''}→ ${args.dst_node || ''}`;
+  return op;
+}
+
+function renderMemoryWriteRow(row) {
+  let result = {};
+  try { result = row.result_json ? JSON.parse(row.result_json) : {}; } catch (e) { /* leave empty */ }
+  const op = memoryWriteOp(row);
+  const canUndo = row.status === 'done' && result.node_id && (op === 'upsert_node' || op === 'add_observation');
+  return `<div class="queue-card status-${esc(row.status)}">
+    <div class="q-top">
+      <span class="q-title">${esc(formatMemoryWriteSummary(row))}</span>
+      <span class="badge badge-${statusBadgeClass(row.status)}">${esc(row.status)}</span>
+    </div>
+    <div class="q-meta">${esc(row.created_at || '')}</div>
+    ${canUndo ? `<div class="q-actions"><button class="btn btn-reject" onclick="undoMemoryNode('${esc(result.node_id)}')">Undo</button></div>` : ''}
+  </div>`;
+}
+
+async function pollMemoryRecent() {
+  try {
+    const resp = await fetch('/api/memory/writes');
+    const rows = await resp.json();
+    memoryRecentBodyEl.innerHTML = rows.length ? rows.map(renderMemoryWriteRow).join('') : '<div class="queue-empty">no memory writes yet</div>';
+  } catch (e) {
+    memoryRecentBodyEl.innerHTML = '<div class="queue-empty">memory writes unreachable</div>';
+  }
+}
+
+async function undoMemoryNode(nodeId) {
+  try {
+    await fetch(`/api/memory/undo/${encodeURIComponent(nodeId)}`, { method: 'POST' });
+  } catch (e) {
+    // fall through — loadMemory()/pollMemoryRecent() reflect whatever state actually landed
+  }
+  if (memorySelectedNodeId === nodeId) {
+    memorySelectedNodeId = null;
+    memoryNodeBodyEl.innerHTML = '<div class="queue-empty">click a node to see its observations</div>';
+  }
+  loadMemory();
+  pollMemoryRecent();
+}
+
 // ---------------------------------------------------------------- polling loops
 function fastTick() {
   pollEvents();
@@ -483,9 +719,11 @@ function slowTick() {
   pollStatus();
   pollHealth();
   pollSpend();
+  pollMemoryRecent();
 }
 
 renderPurposeRail();
+renderMemoryPurposePills();
 loadRouting();
 fastTick();
 slowTick();

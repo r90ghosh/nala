@@ -96,6 +96,46 @@ def _fetch_activity_summary(session_id: str, turn_id: str, data_dir: Path | None
         return f"(activity summary unavailable — known-unknown: {exc})"
 
 
+def _summarize_memory_write(payload: dict) -> str:
+    op = payload.get("op", "?")
+    result = payload.get("result") or {}
+    if op == "upsert_node":
+        verb = "created" if result.get("created") else "updated"
+        return f"{verb} {result.get('kind', '?')}: {result.get('label', '?')}"
+    if op == "add_observation":
+        return f"observed: {result.get('fact', '?')}"
+    if op == "add_edge":
+        return f"linked {result.get('src_node', '?')} —{result.get('rel', '?')}→ {result.get('dst_node', '?')}"
+    if op == "delete_node":
+        return f"deleted node {result.get('label') or result.get('node_id', '?')}"
+    return op
+
+
+def _fetch_memory_summary(session_id: str, turn_id: str, data_dir: Path | None) -> str | None:
+    """None means "nothing was written — omit the section entirely", the
+    correct steady-state, not a degradation. A genuine failure to check
+    still surfaces as a known-unknown string, same as every other section."""
+    try:
+        with loud_failure(session_id, turn_id, "briefing memory summary", data_dir):
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            events.ensure_schema(data_dir)
+            conn = db.connect(data_dir)
+            try:
+                rows = conn.execute(
+                    "SELECT payload_json FROM events WHERE type = 'memory_write' AND ts >= ? ORDER BY id", (cutoff,),
+                ).fetchall()
+            finally:
+                conn.close()
+
+            if not rows:
+                return None
+
+            lines = [f"- {_summarize_memory_write(json.loads(row['payload_json']))}" for row in rows]
+            return "\n".join(lines)
+    except Exception as exc:
+        return f"(memory summary unavailable — known-unknown: {exc})"
+
+
 def _fetch_spend_summary(session_id: str, turn_id: str, data_dir: Path | None) -> str:
     try:
         with loud_failure(session_id, turn_id, "briefing spend summary", data_dir):
@@ -145,12 +185,17 @@ def _summarize(raw_material: str, turn_id: str, data_dir: Path | None) -> str:
 def compose_briefing(data_dir: Path | None = None) -> str:
     turn_id = events.new_id()
 
-    raw_material = "\n\n".join([
+    sections = [
         f"CALENDAR (today):\n{_fetch_todays_calendar(SESSION_ID, turn_id, data_dir)}",
         f"REPO STATUS:\n{_fetch_repo_status(SESSION_ID, turn_id, data_dir)}",
         f"ACTIVITY (last 24h):\n{_fetch_activity_summary(SESSION_ID, turn_id, data_dir)}",
         f"SPEND:\n{_fetch_spend_summary(SESSION_ID, turn_id, data_dir)}",
-    ])
+    ]
+    memory_summary = _fetch_memory_summary(SESSION_ID, turn_id, data_dir)
+    if memory_summary is not None:
+        sections.append(f"MEMORY (last 24h):\n{memory_summary}")
+
+    raw_material = "\n\n".join(sections)
 
     briefing_text = _summarize(raw_material, turn_id, data_dir)
 

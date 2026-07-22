@@ -82,7 +82,7 @@ def test_report_status_tool_exception_is_caught_logged_and_survives(data_dir, fa
     from nala.cli import process_turn
 
     class FakeBrain:
-        def decide(self, utterance, *, turn_id=None, session_id=None):
+        def decide(self, utterance, *, turn_id=None, session_id=None, memory_context=None):
             return RawIntent(action_type="report_status", args={})
 
     outcome = process_turn("status please", brain=FakeBrain(), session_id="s2")

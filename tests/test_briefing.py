@@ -46,6 +46,60 @@ def test_spend_summary_reports_yesterday_and_today(data_dir):
     assert "$0.0180" in text  # 1000/1e6*3 + 1000/1e6*15 = 0.018
 
 
+def test_memory_summary_is_none_when_nothing_written_in_last_24h(data_dir):
+    text = briefing._fetch_memory_summary("s1", "t1", None)
+
+    assert text is None
+
+
+def test_memory_summary_summarizes_recent_writes(data_dir):
+    from nala import chokepoint
+    chokepoint.execute_action(
+        "memory_write", {"op": "upsert_node", "kind": "person", "label": "Priya", "purpose_scope": "people"},
+        turn_id="t1", session_id="s1",
+    )
+
+    text = briefing._fetch_memory_summary("s1", "t2", None)
+
+    assert text is not None
+    assert "Priya" in text
+
+
+def test_compose_briefing_omits_memory_section_when_nothing_written(monkeypatch, data_dir, tmp_path):
+    monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.01")
+    spend.record_spend(turn_id="prior", model="claude-sonnet-5", input_tokens=100_000, output_tokens=100_000)
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+
+    text = briefing.compose_briefing()
+
+    assert "MEMORY" not in text
+
+
+def test_compose_briefing_includes_memory_section_when_something_was_written(monkeypatch, data_dir, tmp_path):
+    from nala import chokepoint
+    root = tmp_path / "projects"
+    root.mkdir()
+    monkeypatch.setenv("NALA_PROJECTS_ROOT", str(root))
+
+    # The memory write must land BEFORE the spend ceiling is exhausted below —
+    # execute_action checks the ceiling first, and a blown ceiling would
+    # reject the write before it ever happens.
+    chokepoint.execute_action(
+        "memory_write", {"op": "upsert_node", "kind": "person", "label": "Priya", "purpose_scope": "people"},
+        turn_id="t1", session_id="s1",
+    )
+
+    monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.01")
+    spend.record_spend(turn_id="prior", model="claude-sonnet-5", input_tokens=100_000, output_tokens=100_000)
+
+    text = briefing.compose_briefing()
+
+    assert "MEMORY" in text
+    assert "Priya" in text
+
+
 def test_summarize_falls_back_to_raw_material_when_ceiling_exceeded(data_dir, monkeypatch):
     monkeypatch.setenv("NALA_DAILY_CEILING_USD", "0.01")
     spend.record_spend(turn_id="prior", model="claude-sonnet-5", input_tokens=100_000, output_tokens=100_000)

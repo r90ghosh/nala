@@ -120,7 +120,7 @@ class FakeBrain:
         self.intent = intent
         self.calls = 0
 
-    def decide(self, utterance, *, turn_id=None, session_id=None):
+    def decide(self, utterance, *, turn_id=None, session_id=None, memory_context=None):
         self.calls += 1
         return self.intent
 

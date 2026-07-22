@@ -123,19 +123,39 @@
 
     <!-- ============ MEMORY ============ -->
     <div class="view" id="view-memory">
-      <div class="memory-placeholder">
-        <div class="ghost-graph">
-          <div class="g-edge" style="width:80px;top:80px;left:110px;transform:rotate(-35deg);"></div>
-          <div class="g-edge" style="width:70px;top:80px;left:35px;transform:rotate(160deg);"></div>
-          <div class="g-edge" style="width:75px;top:80px;left:110px;transform:rotate(35deg);"></div>
-          <div class="g-edge" style="width:60px;top:130px;left:20px;transform:rotate(-15deg);"></div>
-          <div class="g-node n1"></div>
-          <div class="g-node n2"></div>
-          <div class="g-node n3"></div>
-          <div class="g-node n4"></div>
-          <div class="g-node n5"></div>
+      <div class="memory-layout">
+
+        <div class="memory-graph-col">
+          <div class="panel hero">
+            <div class="panel-head">
+              <div class="title">Memory graph</div>
+              <div class="memory-controls">
+                <input type="text" id="memorySearch" placeholder="search labels…" autocomplete="off" />
+              </div>
+            </div>
+            <div class="memory-pills" id="memoryPurposePills"></div>
+            <div class="panel-body memory-graph-body">
+              <svg id="memoryGraphSvg" class="memory-graph-svg"></svg>
+              <div class="memory-empty" id="memoryEmpty">no memory yet — run <code>python -m nala.seed_memory</code> to seed your starter graph, or just tell chat something to remember</div>
+            </div>
+          </div>
         </div>
-        <div class="memory-msg">Graph memory arrives with M5</div>
+
+        <div class="col memory-side-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title">Node details</div>
+            </div>
+            <div class="panel-body" id="memoryNodeBody"><div class="queue-empty">click a node to see its observations</div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title">Recent memory writes</div>
+            </div>
+            <div class="panel-body" id="memoryRecentBody"></div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -143,9 +163,10 @@
 </div>
 
 <nav class="mobile-tabbar" id="mobileTabbar">
-  <button class="mtab active" data-mobile="feed">Feed</button>
-  <button class="mtab" data-mobile="chat">Chat</button>
-  <button class="mtab" data-mobile="actions">Actions</button>
+  <button class="mtab active" data-mobile="feed"><span class="mtab-icon">📡</span><span class="mtab-label">Feed</span></button>
+  <button class="mtab" data-mobile="chat"><span class="mtab-icon">💬</span><span class="mtab-label">Chat</span></button>
+  <button class="mtab" data-mobile="actions"><span class="mtab-icon">⚡</span><span class="mtab-label">Actions</span></button>
+  <button class="mtab" data-mobile="memory"><span class="mtab-icon">🧠</span><span class="mtab-label">Memory</span></button>
 </nav>
 
 <script src="/static/app.js"></script>

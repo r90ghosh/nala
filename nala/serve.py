@@ -222,6 +222,55 @@ def api_reject(token: str):
     return {"status": result.status, "message": result.message}
 
 
+@app.post("/api/actions/{token}/dismiss")
+def api_dismiss(token: str):
+    turn_id = events.new_id()
+    result = chokepoint.dismiss_action(token, turn_id=turn_id, session_id=SESSION_ID)
+    return {"status": result.status, "message": result.message}
+
+
+@app.get("/api/memory")
+def api_get_memory(label: str | None = None, kind: str | None = None, purpose_scope: str | None = None):
+    """Backs the Memory tab's graph view — a thin wrapper over the same
+    memory_recall dispatch chat uses, so an invalid kind/purpose_scope gets
+    the same boundary-validation rejection either way."""
+    args: dict = {}
+    if label:
+        args["label"] = label
+    if kind:
+        args["kind"] = kind
+    if purpose_scope:
+        args["purpose_scope"] = purpose_scope
+
+    turn_id = events.new_id()
+    result = chokepoint.execute_action("memory_recall", args, turn_id=turn_id, session_id=SESSION_ID)
+    if result.status != "done":
+        return JSONResponse({"error": result.message}, status_code=400)
+    return result.data
+
+
+@app.get("/api/memory/writes")
+def api_get_memory_writes():
+    """Recent memory_write ledger rows for the Memory tab's activity panel —
+    same list_processed_actions() the action queue uses, just filtered."""
+    rows = chokepoint.list_processed_actions(limit=500)
+    return [r for r in rows if r["action_type"] == "memory_write"][:30]
+
+
+@app.post("/api/memory/undo/{node_id}")
+def api_undo_memory_node(node_id: str):
+    """"Undo" for a memory write is a fresh delete_node dispatch through the
+    chokepoint, not resolving an old ledger row — memory_write is reversible
+    and this call carries no purpose, so it dispatches immediately, same as
+    any other direct user action."""
+    turn_id = events.new_id()
+    result = chokepoint.execute_action(
+        "memory_write", {"op": "delete_node", "node_id": node_id},
+        turn_id=turn_id, session_id=SESSION_ID,
+    )
+    return {"status": result.status, "message": result.message}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return (STATIC_DIR / "index.html").read_text()
