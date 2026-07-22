@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from nala.config import PROJECTS, get_projects_root
-from nala.tools import assert_in_chokepoint, register
+from nala.tools import assert_valid_ticket, register
 
 
 def _git_info(repo_path: Path) -> dict:
@@ -42,7 +42,7 @@ def _git_info(repo_path: Path) -> dict:
 
 
 @register("report_status")
-def report_status() -> list[dict]:
-    assert_in_chokepoint()
+def report_status(ticket=None) -> list[dict]:
+    assert_valid_ticket(ticket)
     root = get_projects_root()
     return [_git_info(root / name) for name in PROJECTS]

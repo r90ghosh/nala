@@ -5,12 +5,12 @@ dispatch this without a typed `confirm <token>`."""
 import httpx
 
 from nala.config import get_backlog_url
-from nala.tools import assert_in_chokepoint, register
+from nala.tools import assert_valid_ticket, register
 
 
 @register("archive_task")
-def archive_task(task_id: int) -> dict:
-    assert_in_chokepoint()
+def archive_task(task_id: int, ticket=None) -> dict:
+    assert_valid_ticket(ticket)
     resp = httpx.put(
         f"{get_backlog_url()}/api/tasks/{task_id}/status",
         json={"status": "archived"},

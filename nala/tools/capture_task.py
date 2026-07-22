@@ -7,12 +7,12 @@ what actually landed."""
 import httpx
 
 from nala.config import get_backlog_url
-from nala.tools import assert_in_chokepoint, register
+from nala.tools import assert_valid_ticket, register
 
 
 @register("capture_task")
-def capture_task(title: str, project: str, priority: str, category: str, client_ref: str) -> dict:
-    assert_in_chokepoint()
+def capture_task(title: str, project: str, priority: str, category: str, client_ref: str, ticket=None) -> dict:
+    assert_valid_ticket(ticket)
     payload = {
         "title": title,
         "project": project,

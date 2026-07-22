@@ -43,3 +43,8 @@ def get_data_dir() -> Path:
 
 def get_projects_root() -> Path:
     return Path(os.environ.get("NALA_PROJECTS_ROOT", "~/Projects")).expanduser()
+
+
+def get_google_client_secret_path() -> Path:
+    default = str(Path("~/.nala/google_client_secret.json").expanduser())
+    return Path(os.environ.get("NALA_GOOGLE_CLIENT_SECRET", default)).expanduser()

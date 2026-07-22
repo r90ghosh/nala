@@ -210,8 +210,8 @@ def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: 
 
     try:
         with loud_failure(session_id, turn_id, f"{action_type} dispatch", data_dir):
-            with tools.dispatching():
-                result = tools.TOOLS[action_type](**call_args)
+            with tools.dispatching() as ticket:
+                result = tools.dispatch(action_type, call_args, ticket)
     except Exception as exc:
         _mark_terminal(key, "failed", error={"exception": type(exc).__name__, "message": str(exc)}, data_dir=data_dir)
         return ActionResult(status="failed", message=f"{action_type} failed: {exc}")
@@ -267,8 +267,8 @@ def _handle_report_status(session_id: str, turn_id: str, data_dir: Path | None) 
     repos: list = []
     try:
         with loud_failure(session_id, turn_id, "report_status dispatch", data_dir):
-            with tools.dispatching():
-                repos = tools.TOOLS["report_status"]()
+            with tools.dispatching() as ticket:
+                repos = tools.dispatch("report_status", {}, ticket)
     except Exception as exc:
         repos_error = str(exc)
 
