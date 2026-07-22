@@ -15,12 +15,29 @@ the action path. Repo: https://github.com/r90ghosh/nala
   against the real backlog, real Claude API, the real Ollama instance, and real Google
   Calendar/Gmail (read-only) — including one real case of the local model proposing a
   malformed capture_task, which the chokepoint correctly rejected rather than executing.
-- **Next (Session 3 / M5):** graph memory (nodes/edges/observations, provenance,
-  confirmable writes) + Relationships/Baby purposes. Per-purpose risk profiles
-  (auto/notify/confirm) land here — M4's proactive actions are hardcoded to always
-  require confirm regardless of reversibility; that blanket rule should become the
-  Projects/Home risk profile once purposes exist, not stay a special case in
-  `nala.triage`.
+- **Session 3 complete (2026-07-22):** M5 — graph memory (`nala/memory.py`:
+  nodes/edges/observations, provenance non-negotiable — source+source_ref+timestamp
+  required on every observation), purposes + risk profiles (`nala/purposes.py` +
+  `purposes/<name>/manifest.yaml` for all 8, loaded/validated at startup — a malformed
+  manifest is a loud process-start failure), chokepoint purpose-aware gating
+  (read_only rejects writes / notify_only lands as a dismissible no-side-effect
+  `notified` row / act_confirm behaves as `awaiting_confirm` did in M4) retiring M4's
+  blanket `force_confirm` special case, triage v2 (classification now also assigns a
+  purpose — unknown never guesses into a permissive one — and 'remember' actually
+  proposes a `memory_write` instead of being a no-op label), the Memory tab (hand-rolled
+  SVG force-directed graph, node click → observations + provenance chips, purpose
+  filter pills, search, recent-writes feed with undo via `delete_node`),
+  `python -m nala.seed_memory`, and brain integration (`memory_recall` context injected
+  as the system prompt before every chat turn; `memory_write`/`memory_recall` in the
+  tool schema so chat can act on "remember that X" directly). 165 tests green. Commits
+  M5a→M5c pushed to main. Verified end to end against the real Claude API: a live chat
+  turn recalled the seeded graph and correctly proposed+dispatched a `memory_write` with
+  provenance; the verification-only node was deleted afterward so no fabricated data
+  persists in the real `~/.nala/memory.db`.
+- **Next (Session 4 / M6):** voice — local Parakeet STT + Kokoro TTS, push-to-talk via
+  `/api/voice/turn`, low-confidence transcription asks rather than guessing (loud failure
+  at the perception boundary, same principle as everywhere else in the action path). The
+  mic button in the UI is already stubbed and disabled ("voice arrives with M6").
 
 ## Commands
 
@@ -31,6 +48,7 @@ the action path. Repo: https://github.com/r90ghosh/nala
 .venv/bin/python -m nala.scheduler         # watchers + triage, one asyncio loop, runs forever
 .venv/bin/python -m nala.serve             # FastAPI feed on 127.0.0.1:8642 (localhost only)
 .venv/bin/python -m nala.google_auth       # one-time interactive OAuth flow (run manually, never by a watcher)
+.venv/bin/python -m nala.seed_memory       # seed the starter graph (7 projects + 'you') — idempotent
 .venv/bin/pytest -q                        # full suite — must be green before any commit
 bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed exceptions
 ```
@@ -55,15 +73,31 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
   forgeable capability in a trusted single-user local process, same as the contextvar before it.
 - `report_status` is a pure read — it deliberately bypasses the idempotency ledger.
 - Rejections (validation/spend) never create `processed_actions` rows.
-- Proactive actions (from `nala.triage`) always call `execute_action(..., force_confirm=True)`
-  — every proposal is gated in M4 regardless of the action's own reversibility tag.
-- `confirm_action`/`reject_action` share token resolution (`_find_awaiting_confirm_row`) and
-  both hex-validate + Python-match the token — never SQL `LIKE` on raw user input. `nala.serve`
-  calls these same functions directly; don't reimplement confirm/reject logic in the API layer.
+- Proactive actions (from `nala.triage`) pass `execute_action(..., purpose=...)` — since M5 the
+  purpose's risk profile decides the gate (read_only rejects / notify_only → `notified` /
+  act_confirm → `awaiting_confirm`), not a blanket `force_confirm`. An unassigned purpose is
+  coalesced to a non-None sentinel before reaching `execute_action` (`triage.UNKNOWN_PURPOSE_SENTINEL`)
+  so it falls back to `notify_only` — passing bare `None` would be read as "this is a direct user
+  turn," skipping gating entirely. `force_confirm` still works for backward compat but nothing
+  passes it anymore.
+- `confirm_action`/`reject_action`/`dismiss_action` share token resolution (`_find_row_by_status`,
+  parameterized by target status) and both hex-validate + Python-match the token — never SQL
+  `LIKE` on raw user input. `nala.serve` calls these same functions directly; don't reimplement
+  confirm/reject/dismiss logic in the API layer.
 - `NALA_OLLAMA_URL` already includes the `/v1` suffix (e.g. `http://localhost:11434/v1`) —
   don't append it again, just `f"{url}/chat/completions"`.
 - Watermarks (last-seen cursor per watcher/triage) live in `nala/state.py` (promoted out of
   `nala/watchers/` once triage needed it too) — not watcher-specific despite the historical name.
+- `nala.memory` functions (`upsert_node`/`add_edge`/`add_observation`/`delete_node`) have no
+  gating or logging of their own — real writes go through `execute_action("memory_write", ...)`
+  only. `nala/seed_memory.py` is the one deliberate exception (a one-off bootstrap script, not a
+  turn), which is why seeded nodes never show up in `/api/memory/writes` or the feed.
+- A `notified` `processed_actions` row means the side effect **never happened** — `dismiss_action`
+  is pure bookkeeping, there's nothing to undo. Don't confuse it with `awaiting_confirm`, which
+  still dispatches on confirm.
+- `nala/purposes.py` deliberately doesn't cache — `load_all()`/`risk_profile_for()` re-read and
+  re-validate the YAML on every call. Fine at this scale; don't "optimize" it without checking
+  whether tests rely on picking up manifest edits without a process restart.
 
 ## Session checklist
 
