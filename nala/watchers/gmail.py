@@ -4,6 +4,8 @@ existing inbox is "new", so it emits no signals for that poll."""
 
 from pathlib import Path
 
+from googleapiclient.errors import HttpError
+
 from nala import state
 from nala.watchers.base import Signal, Watcher
 
@@ -33,34 +35,53 @@ class GmailWatcher(Watcher):
             state.set_cursor(self.name, {"history_id": profile["historyId"]}, self.data_dir)
             return []
 
-        history_resp = service.users().history().list(
-            userId="me", startHistoryId=last_history_id, historyTypes=["messageAdded"],
-        ).execute()
-
         signals: list[Signal] = []
         seen_ids: set[str] = set()
-        for h in history_resp.get("history", []):
-            for m in h.get("messagesAdded", []):
-                msg_id = m["message"]["id"]
-                if msg_id in seen_ids:
-                    continue
-                seen_ids.add(msg_id)
-                msg = service.users().messages().get(
-                    userId="me", id=msg_id, format="metadata", metadataHeaders=["From", "Subject"],
+        page_token = None
+        new_history_id = last_history_id
+        while True:
+            try:
+                history_resp = service.users().history().list(
+                    userId="me", startHistoryId=last_history_id,
+                    historyTypes=["messageAdded"], pageToken=page_token,
                 ).execute()
-                headers = {hdr["name"]: hdr["value"] for hdr in msg.get("payload", {}).get("headers", [])}
-                signals.append(Signal(
-                    source="gmail",
-                    kind="new_message",
-                    title=headers.get("Subject", "(no subject)"),
-                    detail=(
-                        f"from={headers.get('From', '?')} "
-                        f"labels={','.join(msg.get('labelIds', []))} "
-                        f"snippet={msg.get('snippet', '')}"
-                    ),
-                    ref=msg_id,
-                ))
+            except HttpError as exc:
+                # Gmail retains history for only ~1 week; once startHistoryId expires
+                # the call 404s on every poll forever. Re-baseline to the current
+                # historyId and resume from now (the missed window is skipped) so the
+                # watcher self-heals instead of flooding the feed with errors.
+                if exc.resp.status == 404:
+                    profile = service.users().getProfile(userId="me").execute()
+                    state.set_cursor(self.name, {"history_id": profile["historyId"]}, self.data_dir)
+                    return []
+                raise
 
-        new_history_id = history_resp.get("historyId", last_history_id)
+            for h in history_resp.get("history", []):
+                for m in h.get("messagesAdded", []):
+                    msg_id = m["message"]["id"]
+                    if msg_id in seen_ids:
+                        continue
+                    seen_ids.add(msg_id)
+                    msg = service.users().messages().get(
+                        userId="me", id=msg_id, format="metadata", metadataHeaders=["From", "Subject"],
+                    ).execute()
+                    headers = {hdr["name"]: hdr["value"] for hdr in msg.get("payload", {}).get("headers", [])}
+                    signals.append(Signal(
+                        source="gmail",
+                        kind="new_message",
+                        title=headers.get("Subject", "(no subject)"),
+                        detail=(
+                            f"from={headers.get('From', '?')} "
+                            f"labels={','.join(msg.get('labelIds', []))} "
+                            f"snippet={msg.get('snippet', '')}"
+                        ),
+                        ref=msg_id,
+                    ))
+
+            new_history_id = history_resp.get("historyId", new_history_id)
+            page_token = history_resp.get("nextPageToken")
+            if not page_token:
+                break
+
         state.set_cursor(self.name, {"history_id": new_history_id}, self.data_dir)
         return signals

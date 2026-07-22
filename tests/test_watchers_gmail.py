@@ -1,5 +1,18 @@
+from googleapiclient.errors import HttpError
+
 from nala import state
 from nala.watchers.gmail import GmailWatcher
+
+
+class _Resp(dict):
+    def __init__(self, status):
+        super().__init__(status=status, reason="error")
+        self.status = status
+        self.reason = "error"
+
+
+def _http_error(status):
+    return HttpError(_Resp(status), b'{"error": {"message": "x"}}')
 
 
 class _Exec:
@@ -79,3 +92,34 @@ def test_repoll_with_no_new_history_returns_no_duplicate_signals(data_dir):
     signals = watcher.poll()
 
     assert signals == []
+
+
+def test_expired_history_id_404_rebaselines_and_recovers(data_dir):
+    # A stale watermark makes Gmail's history.list 404 forever; the watcher must
+    # re-baseline to the current historyId and recover, not flood the feed.
+    state.set_cursor("gmail", {"history_id": "100"})
+    service = FakeGmailService(profile={"historyId": "999"})
+    service.list = lambda **kwargs: (_ for _ in ()).throw(_http_error(404))
+    watcher = GmailWatcher(service_factory=lambda: service)
+
+    signals = watcher.poll()
+
+    assert signals == []
+    assert state.get_cursor("gmail") == {"history_id": "999"}
+
+
+def test_non_404_http_error_propagates(data_dir):
+    # A real error (e.g. 500) must NOT be swallowed as a re-baseline.
+    state.set_cursor("gmail", {"history_id": "100"})
+    service = FakeGmailService(profile={"historyId": "999"})
+    service.list = lambda **kwargs: (_ for _ in ()).throw(_http_error(500))
+    watcher = GmailWatcher(service_factory=lambda: service)
+
+    try:
+        watcher.poll()
+        raised = False
+    except HttpError:
+        raised = True
+    assert raised
+    # watermark untouched on a genuine error
+    assert state.get_cursor("gmail") == {"history_id": "100"}
