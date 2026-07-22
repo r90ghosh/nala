@@ -108,6 +108,39 @@ def test_expired_history_id_404_rebaselines_and_recovers(data_dir):
     assert state.get_cursor("gmail") == {"history_id": "999"}
 
 
+def test_message_get_404_skips_that_message_not_the_whole_poll(data_dir):
+    # history references a message that's since been deleted; get() 404s on it.
+    # The poll must skip it, still emit the good message, and advance the watermark
+    # (otherwise the bad id poisons every future poll).
+    state.set_cursor("gmail", {"history_id": "500"})
+    history_resp = {
+        "history": [{"messagesAdded": [{"message": {"id": "gone"}}, {"message": {"id": "m2"}}]}],
+        "historyId": "700",
+    }
+    messages = {
+        "m2": {
+            "id": "m2", "labelIds": ["INBOX"], "snippet": "ok",
+            "payload": {"headers": [{"name": "From", "value": "x@y.com"}, {"name": "Subject", "value": "real"}]},
+        },
+    }
+    service = FakeGmailService(history_resp=history_resp, messages=messages)
+    orig_get = service.get
+
+    def get(userId, id, format, metadataHeaders):
+        if id == "gone":
+            raise _http_error(404)
+        return orig_get(userId=userId, id=id, format=format, metadataHeaders=metadataHeaders)
+
+    service.get = get
+    watcher = GmailWatcher(service_factory=lambda: service)
+
+    signals = watcher.poll()
+
+    assert len(signals) == 1
+    assert signals[0].title == "real"
+    assert state.get_cursor("gmail") == {"history_id": "700"}
+
+
 def test_non_404_http_error_propagates(data_dir):
     # A real error (e.g. 500) must NOT be swallowed as a re-baseline.
     state.set_cursor("gmail", {"history_id": "100"})

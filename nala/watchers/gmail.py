@@ -62,9 +62,18 @@ class GmailWatcher(Watcher):
                     if msg_id in seen_ids:
                         continue
                     seen_ids.add(msg_id)
-                    msg = service.users().messages().get(
-                        userId="me", id=msg_id, format="metadata", metadataHeaders=["From", "Subject"],
-                    ).execute()
+                    try:
+                        msg = service.users().messages().get(
+                            userId="me", id=msg_id, format="metadata", metadataHeaders=["From", "Subject"],
+                        ).execute()
+                    except HttpError as exc:
+                        # history.messageAdded can reference a message that was
+                        # deleted/moved before we fetch it → get() 404s. Skip that
+                        # one message rather than failing the whole poll (which would
+                        # never advance the watermark and 404 forever on the same id).
+                        if exc.resp.status == 404:
+                            continue
+                        raise
                     headers = {hdr["name"]: hdr["value"] for hdr in msg.get("payload", {}).get("headers", [])}
                     signals.append(Signal(
                         source="gmail",
