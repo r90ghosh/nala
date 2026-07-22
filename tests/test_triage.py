@@ -122,3 +122,46 @@ def test_repoll_does_not_reprocess_already_triaged_signals(data_dir, fake_ollama
 
     assert counts == {"triaged": 0, "proposed": 0, "rejected": 0}
     assert fake_ollama.calls == 1  # second pass never even called Ollama — nothing new to triage
+
+
+def test_watermark_commits_incrementally_per_signal_not_once_per_batch(data_dir, fake_ollama, monkeypatch):
+    id1 = _make_signal_event(ref="sig1")
+    id2 = _make_signal_event(ref="sig2")
+    fake_ollama.responses.append(json.dumps({"classification": "ignore", "reason": "r1"}))
+    fake_ollama.responses.append(json.dumps({"classification": "ignore", "reason": "r2"}))
+
+    committed = []
+    real_set_cursor = state.set_cursor
+
+    def spy_set_cursor(name, cursor, data_dir=None):
+        if name == triage.WATERMARK_NAME:
+            committed.append(cursor.get("last_event_id"))
+        return real_set_cursor(name, cursor, data_dir)
+
+    monkeypatch.setattr(triage.state, "set_cursor", spy_set_cursor)
+
+    triage.run_triage_pass()
+
+    assert committed == [id1, id2]  # incremental — one commit per signal, not a single final commit
+
+
+def test_mid_batch_failure_does_not_reprocess_already_handled_signal(data_dir, fake_ollama):
+    id1 = _make_signal_event(ref="sig1")
+    _make_signal_event(ref="sig2")
+    fake_ollama.responses.append(json.dumps({"classification": "ignore", "reason": "r1"}))
+    # No second response queued: signal 2's turn hits the empty-queue 503,
+    # simulating Ollama going down (or the process crashing) mid-batch.
+
+    counts = triage.run_triage_pass()
+
+    assert counts["triaged"] == 1
+    assert state.get_cursor("triage")["last_event_id"] == id1  # committed past signal 1 already
+    calls_after_first_pass = fake_ollama.calls  # 2: signal 1 succeeded, signal 2 hit the empty queue
+
+    # A later pass must only see signal 2 remaining — signal 1 is durably
+    # handled and is never re-triaged into a duplicate awaiting_confirm row.
+    fake_ollama.responses.append(json.dumps({"classification": "remember", "reason": "r2"}))
+    counts2 = triage.run_triage_pass()
+
+    assert counts2["triaged"] == 1
+    assert fake_ollama.calls == calls_after_first_pass + 1  # exactly one more call — for signal 2, never signal 1 again

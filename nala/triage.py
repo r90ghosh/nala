@@ -112,7 +112,6 @@ def run_triage_pass(data_dir: Path | None = None) -> dict:
         return {"triaged": 0, "proposed": 0, "rejected": 0}
 
     counts = {"triaged": 0, "proposed": 0, "rejected": 0}
-    last_id = None
 
     for row in signals:
         turn_id = f"triage-{row['id']}"
@@ -127,7 +126,10 @@ def run_triage_pass(data_dir: Path | None = None) -> dict:
                 level="error", data_dir=data_dir,
             )
             counts["rejected"] += 1
-            last_id = row["id"]
+            # This signal has reached its terminal outcome (rejected) — commit
+            # the watermark past it now, per-signal rather than per-batch, so
+            # a mid-batch crash can't re-triage it into a duplicate row later.
+            state.set_cursor(WATERMARK_NAME, {"last_event_id": row["id"]}, data_dir)
             continue
         except Exception as exc:
             # Ollama itself is unreachable — stop the whole pass here. Don't
@@ -176,10 +178,9 @@ def run_triage_pass(data_dir: Path | None = None) -> dict:
                     level="error", data_dir=data_dir,
                 )
 
-        last_id = row["id"]
-
-    if last_id is not None:
-        state.set_cursor(WATERMARK_NAME, {"last_event_id": last_id}, data_dir)
+        # Terminal outcome reached for this signal — commit the watermark
+        # past it now (see comment above; same reasoning applies here).
+        state.set_cursor(WATERMARK_NAME, {"last_event_id": row["id"]}, data_dir)
 
     return counts
 

@@ -33,6 +33,21 @@ def process_turn(utterance: str, *, brain: Brain, session_id: str, turn_id: str 
     return chokepoint.execute_action(intent.action_type, intent.args, turn_id=turn_id, session_id=session_id)
 
 
+def render_pending() -> str:
+    rows = chokepoint.list_processed_actions(limit=50)
+    awaiting = [r for r in rows if r["status"] == "awaiting_confirm"]
+    if not awaiting:
+        return "nothing awaiting confirmation"
+
+    lines = []
+    for row in awaiting:
+        token = row["idempotency_key"][:8]
+        origin = row.get("origin", {"kind": "user"})
+        lines.append(f"[{token}] {row['action_type']} {row['args_json']}")
+        lines.append(f"  {chokepoint.format_origin_line(origin)}")
+    return "\n".join(lines)
+
+
 def render_transcript() -> str:
     session_id = events.last_session_id()
     if session_id is None:
@@ -72,11 +87,15 @@ def main():
     parser = argparse.ArgumentParser(prog="nala")
     parser.add_argument("--turn", help="run a single turn and exit")
     parser.add_argument("--briefing", action="store_true", help="compose and print the morning briefing")
-    parser.add_argument("command", nargs="?", choices=["transcript"], default=None)
+    parser.add_argument("command", nargs="?", choices=["transcript", "pending"], default=None)
     args = parser.parse_args()
 
     if args.command == "transcript":
         print(render_transcript())
+        return
+
+    if args.command == "pending":
+        print(render_pending())
         return
 
     if args.briefing:
@@ -91,7 +110,7 @@ def main():
         print(_run_turn(args.turn, brain=brain, session_id=session_id))
         return
 
-    print("Nala (M3). Type 'exit' to quit, 'transcript' to view this session's log.")
+    print("Nala (M3). Type 'exit' to quit, 'transcript' to view this session's log, 'pending' for awaiting confirmations.")
     while True:
         try:
             utterance = input("> ").strip()
@@ -104,6 +123,9 @@ def main():
             continue
         if utterance.lower() == "transcript":
             print(render_transcript())
+            continue
+        if utterance.lower() == "pending":
+            print(render_pending())
             continue
         print(_run_turn(utterance, brain=brain, session_id=session_id))
 

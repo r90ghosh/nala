@@ -46,7 +46,10 @@ knows which. Runtime data lives in `~/.nala/` (events.db, memory.db, logs).
 
 1. **Single chokepoint.** Tools are dispatched only by `execute_action(intent)`. Each tool
    raises if invoked outside it (assert: live txn + `pending` idempotency row). One test per
-   tool asserts a direct call throws.
+   tool asserts a direct call throws. The guard protects against *accidental* out-of-chokepoint
+   calls — including the asyncio-context-leak class M4a fixed — not against malicious in-process
+   code: it's a forgeable capability object in a trusted single-user local process, same as the
+   contextvar it replaced.
 2. **Idempotency.** `key = sha256(action_type + canonical_json(args) + turn_id)`.
    `processed_actions(idempotency_key PK, turn_id, action_type, reversibility, args_json,
    status, result_json, error_json, created_at, resolved_at)`,

@@ -42,6 +42,10 @@
   .confirm-card .ct-args{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px;word-break:break-word;}
   .confirm-card .ct-key{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--faint);margin-top:4px;}
   .confirm-card .ct-actions{display:flex;gap:8px;margin-top:8px;}
+  .origin-block{margin-top:6px;padding:6px 8px;border-radius:7px;font-size:10.5px;word-break:break-word;}
+  .origin-block.proactive{border:1px solid rgba(167,139,250,.35);background:rgba(167,139,250,.08);color:#c9bdf7;}
+  .origin-block.user{border:1px solid var(--hair);background:rgba(255,255,255,.02);color:var(--faint);}
+  .origin-block .o-label{font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:9px;margin-right:6px;}
   .btn{border:1px solid var(--hair);background:var(--panel2);color:var(--ink);border-radius:7px;padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;}
   .btn.confirm{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.12);color:var(--emerald);}
   .btn.reject{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.12);color:var(--red);}
@@ -124,14 +128,24 @@ async function pollActions() {
     }
     awaitingEl.innerHTML = awaiting.map(a => {
       const token = a.idempotency_key.slice(0, 8);
+      const origin = a.origin || { kind: 'user' };
+      const isProactive = origin.kind === 'proactive';
+      // Attacker-controlled strings (email subjects, model reasoning) — esc() everything.
+      const originHtml = isProactive
+        ? `<div class="origin-block proactive"><span class="o-label">proactive proposal</span>` +
+          `proposed by ${esc(origin.model || 'unknown model')} · ` +
+          `from ${esc(origin.source || 'unknown source')}: ${esc(origin.signal_title || '(no title)')} · ` +
+          `reason: ${esc(origin.reason || '(no reason given)')}</div>`
+        : `<div class="origin-block user"><span class="o-label">user-initiated</span>requested directly by the operator</div>`;
       return `
         <div class="confirm-card">
           <div class="ct-type">${esc(a.action_type)}</div>
           <div class="ct-args">${esc(a.args_json)}</div>
-          <div class="ct-key">token: ${token}</div>
+          ${originHtml}
+          <div class="ct-key">token: ${esc(token)}</div>
           <div class="ct-actions">
-            <button class="btn confirm" onclick="act('${token}','confirm',this)">Confirm</button>
-            <button class="btn reject" onclick="act('${token}','reject',this)">Reject</button>
+            <button class="btn confirm" onclick="act('${esc(token)}','confirm',this)">Confirm</button>
+            <button class="btn reject" onclick="act('${esc(token)}','reject',this)">Reject</button>
           </div>
         </div>`;
     }).join('');

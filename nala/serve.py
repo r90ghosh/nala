@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from nala import chokepoint, db, events, reconciler, spend
-from nala.db import ensure_processed_actions
 
 app = FastAPI(title="Nala")
 
@@ -34,15 +33,7 @@ def api_get_events(since: int = 0):
 
 @app.get("/api/actions")
 def api_get_actions():
-    conn = db.connect()
-    try:
-        ensure_processed_actions(conn)
-        rows = conn.execute(
-            "SELECT * FROM processed_actions ORDER BY created_at DESC LIMIT 200"
-        ).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
+    return chokepoint.list_processed_actions()
 
 
 @app.get("/api/status")

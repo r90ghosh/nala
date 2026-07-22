@@ -43,6 +43,83 @@ def compute_key(action_type: str, args: dict, turn_id: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+_TRIAGE_TURN_RE = re.compile(r"^triage-(\d+)$")
+
+
+def derive_origin(row: dict, data_dir: Path | None = None) -> dict:
+    """Distinguishes a proactively-triaged proposal from a user-initiated
+    action, for the confirm surface (CLI + web) — a prompt-injected email
+    proposal must never be visually indistinguishable from something the
+    operator asked for directly. Proactive rows have turn_id "triage-<signal
+    event id>" (set by nala.triage); everything else is user-initiated."""
+    match = _TRIAGE_TURN_RE.match(row.get("turn_id") or "")
+    if not match:
+        return {"kind": "user"}
+
+    signal_event_id = int(match.group(1))
+    conn = connect(data_dir)
+    try:
+        triage_row = conn.execute(
+            "SELECT payload_json FROM events WHERE turn_id = ? AND type = 'triage' ORDER BY id ASC LIMIT 1",
+            (row["turn_id"],),
+        ).fetchone()
+        signal_row = conn.execute("SELECT payload_json FROM events WHERE id = ?", (signal_event_id,)).fetchone()
+    finally:
+        conn.close()
+
+    model = reason = None
+    if triage_row:
+        payload = json.loads(triage_row["payload_json"])
+        model = payload.get("model")
+        reason = payload.get("reason")
+
+    source = signal_title = None
+    if signal_row:
+        payload = json.loads(signal_row["payload_json"])
+        source = payload.get("source")
+        signal_title = payload.get("title")
+
+    return {"kind": "proactive", "source": source, "signal_title": signal_title, "model": model, "reason": reason}
+
+
+def format_origin_line(origin: dict) -> str:
+    if origin.get("kind") != "proactive":
+        return "user-initiated"
+    return (
+        f"proposed by {origin.get('model') or 'unknown model'} · "
+        f"from {origin.get('source') or 'unknown source'}: {origin.get('signal_title') or '(no title)'} · "
+        f"reason: {origin.get('reason') or '(no reason given)'}"
+    )
+
+
+def _with_origin_line(result: ActionResult, origin: dict) -> ActionResult:
+    if origin.get("kind") == "proactive":
+        result.message = f"({format_origin_line(origin)})\n{result.message}"
+    return result
+
+
+def list_processed_actions(data_dir: Path | None = None, limit: int = 200) -> list[dict]:
+    """All processed_actions rows, most recent first, with `origin` attached
+    to awaiting_confirm rows — the one place both the CLI and the web feed
+    get provenance from, so neither has to re-derive it."""
+    conn = connect(data_dir)
+    try:
+        ensure_processed_actions(conn)
+        rows = conn.execute(
+            "SELECT * FROM processed_actions ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    result = []
+    for row in rows:
+        d = dict(row)
+        if d["status"] == "awaiting_confirm":
+            d["origin"] = derive_origin(d, data_dir)
+        result.append(d)
+    return result
+
+
 def _checkpoint(name: str) -> None:
     if _crash_hook is not None:
         _crash_hook(name)
@@ -191,6 +268,7 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
     if rejection is not None:
         return rejection
 
+    origin = derive_origin(dict(row), data_dir)
     key = row["idempotency_key"]
     action_type = row["action_type"]
     normalized_args = json.loads(row["args_json"])
@@ -208,7 +286,7 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
         conn.commit()
         conn.close()
         events.log_event(session_id, turn_id, "rejected", {"reason": str(exc)}, level="error", data_dir=data_dir)
-        return ActionResult(status="rejected", message=f"refused: {exc}")
+        return _with_origin_line(ActionResult(status="rejected", message=f"refused: {exc}"), origin)
 
     conn = connect(data_dir)
     ensure_processed_actions(conn)
@@ -218,9 +296,10 @@ def confirm_action(token: str, *, turn_id: str, session_id: str, data_dir: Path 
 
     if cur.rowcount == 0:
         events.log_event(session_id, turn_id, "rejected", {"reason": "action was already resolved by another confirm/reject", "idempotency_key": key}, level="error", data_dir=data_dir)
-        return ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)")
+        return _with_origin_line(ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)"), origin)
 
-    return _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
+    result = _dispatch_and_terminate(key, action_type, normalized_args, session_id, turn_id, data_dir)
+    return _with_origin_line(result, origin)
 
 
 def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path | None = None) -> ActionResult:
@@ -228,6 +307,7 @@ def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path |
     if rejection is not None:
         return rejection
 
+    origin = derive_origin(dict(row), data_dir)
     key = row["idempotency_key"]
     now = datetime.now(timezone.utc).isoformat()
 
@@ -242,10 +322,10 @@ def reject_action(token: str, *, turn_id: str, session_id: str, data_dir: Path |
 
     if cur.rowcount == 0:
         events.log_event(session_id, turn_id, "rejected", {"reason": "action was already resolved by another confirm/reject", "idempotency_key": key}, level="error", data_dir=data_dir)
-        return ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)")
+        return _with_origin_line(ActionResult(status="rejected", message="this action was already resolved (confirmed or rejected elsewhere)"), origin)
 
     events.log_event(session_id, turn_id, "rejected", {"reason": "operator rejected proposed action", "idempotency_key": key}, data_dir=data_dir)
-    return ActionResult(status="rejected", message=f"rejected {row['action_type']} #{key[:8]}")
+    return _with_origin_line(ActionResult(status="rejected", message=f"rejected {row['action_type']} #{key[:8]}"), origin)
 
 
 def _dispatch_and_terminate(key: str, action_type: str, args: dict, session_id: str, turn_id: str, data_dir: Path | None) -> ActionResult:

@@ -51,6 +51,8 @@ bash scripts/lint_action_path.sh           # loud-failure lint — no swallowed 
   not a contextvar — a contextvar gets copied into any `asyncio.Task` spawned inside a
   dispatch window and keeps the guard "open" in that task forever. Tools receive the ticket
   explicitly via `tools.dispatch(action_type, args, ticket)`; never re-introduce ambient state.
+  It guards against *accidental* out-of-chokepoint calls, not malicious in-process code — a
+  forgeable capability in a trusted single-user local process, same as the contextvar before it.
 - `report_status` is a pure read — it deliberately bypasses the idempotency ledger.
 - Rejections (validation/spend) never create `processed_actions` rows.
 - Proactive actions (from `nala.triage`) always call `execute_action(..., force_confirm=True)`

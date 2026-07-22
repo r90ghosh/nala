@@ -1,10 +1,11 @@
 """Base Watcher contract + the sanctioned way to run one.
 
 run_poll() is the only way a watcher's poll() should ever be invoked outside
-a test: it wraps the call in loud_failure so an exception (missing Google
-token, network error, git subprocess failure, ...) becomes a level='error'
-event and a degraded (empty) result — never a crash, never silent. Signals a
-watcher actually returns are logged as events rows type='signal'."""
+a test: it wraps BOTH the poll() call and the per-signal event logging in
+loud_failure, so an exception anywhere in that path (missing Google token,
+network error, git subprocess failure, sqlite contention past busy_timeout,
+disk-full mid-loop, ...) becomes a level='error' event and a degraded
+(empty) result — never a crash, never silent."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,13 +35,12 @@ def run_poll(watcher: Watcher, *, session_id: str, turn_id: str, data_dir: Path 
     try:
         with loud_failure(session_id, turn_id, f"{watcher.name} watcher poll", data_dir):
             signals = watcher.poll()
+            for signal in signals:
+                events.log_event(
+                    session_id, turn_id, "signal",
+                    {"source": signal.source, "kind": signal.kind, "title": signal.title, "detail": signal.detail, "ref": signal.ref},
+                    data_dir=data_dir,
+                )
+            return signals
     except Exception:
         return []
-
-    for signal in signals:
-        events.log_event(
-            session_id, turn_id, "signal",
-            {"source": signal.source, "kind": signal.kind, "title": signal.title, "detail": signal.detail, "ref": signal.ref},
-            data_dir=data_dir,
-        )
-    return signals
