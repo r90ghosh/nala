@@ -148,17 +148,16 @@ nala/
 | M8 | Finance (SimpleFIN read-only), News/Purchase watchers, digests | thin purposes ride existing rails | 6 |
 | M9 | First gated real-world actions: send iMessage, create calendar event | irreversibility guard, for real | 6+ |
 
-**M4 precondition:** the chokepoint's dispatch guard (`nala/tools/__init__.py`) is a
-`contextvars.ContextVar` set for the duration of `execute_action()`'s `with
-tools.dispatching():` block. That's safe for the current synchronous, single-turn-at-a-time
-CLI, but it is **not** concurrency-safe: an `asyncio.create_task(...)` started from inside a
-`dispatching()` window inherits the context and keeps the guard open indefinitely in the
-child task, and a threaded watcher calling into a tool from a different thread doesn't share
-the contextvar at all (so a legitimate dispatch from a watcher thread could wrongly raise
-`ToolInvokedOutsideChokepoint`). M4 adds watchers (pollers) and thus real concurrency — the
-guard must be made call-stack-scoped (e.g., an explicit token/frame check, or re-deriving the
-contextvar per task at spawn time) before any watcher lands. No code change yet; this is a
-blocker to resolve as part of M4, not before it.
+**M4 precondition — resolved (Session 2, M4a):** the chokepoint's dispatch guard
+(`nala/tools/__init__.py`) was a `contextvars.ContextVar`, which is not concurrency-safe — an
+`asyncio.create_task(...)` started inside a `dispatching()` window inherits a copy of the
+context and keeps the guard open indefinitely in the child task regardless of what the parent
+does afterward. Replaced with an explicit, call-stack-scoped `DispatchTicket`: `execute_action`
+mints one per dispatch and tools receive it directly via `tools.dispatch(action_type, args,
+ticket)`, asserting it's still active. A ticket's liveness is its own mutable state, not
+inherited context, so a task that outlives the window that spawned it correctly fails. Covered
+by `tests/test_dispatch_ticket.py`, including a literal reproduction of the asyncio leak and a
+two-thread overlapping-dispatch test.
 
 ## Verification (Session 1 gate — all must pass before M3 is "done")
 
